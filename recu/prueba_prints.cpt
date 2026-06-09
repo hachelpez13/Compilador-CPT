@@ -1,0 +1,10 @@
+var b1, b2: bool;
+
+proc main is
+    b1 = true;
+    b2 = false;
+
+    println("Prueba de booleanos:");
+    println("b1: ", b1);
+    println("b2: ", b2);
+done

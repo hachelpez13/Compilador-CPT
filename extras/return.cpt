@@ -1,0 +1,7 @@
+proc main is
+    func devolver_cien() -> int is
+        return 100;
+    done
+
+    println("Resultado (debe ser 100): ", devolver_cien());
+done

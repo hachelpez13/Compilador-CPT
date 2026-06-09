@@ -1,0 +1,1793 @@
+//*****************************************************************
+// File:   cpt.jj
+// Author: Elias Zabaleta y Hugo López Navarro
+// Date:   enero 26
+// Coms:   compilar mediante "ant" y "ant clean && ant" para recompilar
+//*****************************************************************
+
+options {
+	IGNORE_CASE = true;
+	COMMON_TOKEN_ACTION = true;
+}
+
+PARSER_BEGIN(cpt)
+
+package traductor;
+
+
+import lib.symbolTable.*;
+import lib.symbolTable.exceptions.*;
+import java.util.ArrayList;
+import lib.attributes.Attributes;
+import lib.tools.codeGeneration.CodeBlock;
+import lib.tools.codeGeneration.PCodeInstruction.OpCode;
+import lib.tools.codeGeneration.CGUtils;
+
+public class cpt {
+
+    // --- VARIABLES GLOBALES DEL COMPILADOR ---
+
+    private static SymbolTable tabla_simbolos = new SymbolTable();
+    public static boolean hayErrores = false;
+
+    private static int labelCounter = 0;
+
+    // Variable global utilizada como "chivato" para sortear la pérdida de alcance 
+    // en los bloques LOOKAHEAD de JavaCC al evaluar parámetros por referencia o valor.
+    public static Symbol paramEsperado = null;
+
+    // Diccionario para guardar la L0, L1... de cada función
+    public static java.util.HashMap<String, String> etiquetasFunciones = new java.util.HashMap<String, String>();
+
+    public static java.util.Stack<Integer> pilaOffsets = new java.util.Stack<Integer>();
+    public static int currentOffset = 3; // La celda 0, 1 y 2 son del sistema
+
+    // Generador secuencial de etiquetas únicas (L0, L1, L2...) para saltos de código
+    public static String generarEtiqueta() {
+        return "L" + (labelCounter++);
+    }
+
+    // Función auxiliar para imprimir escalares 
+    public static void generarImpresionEscalar(CodeBlock code, Symbol.Types tipo) {
+        if (tipo == Symbol.Types.BOOL) {
+            String labelFalse = generarEtiqueta();
+            String labelEnd = generarEtiqueta();
+            
+            // JMF consume la cima de la pila. Si es 0 (False), salta a labelFalse
+            code.addInst(OpCode.JMF, labelFalse);
+            
+            // RAMA TRUE 
+            code.addInst(OpCode.STC, (int)'t'); code.addInst(OpCode.WRT, 0);
+            code.addInst(OpCode.STC, (int)'r'); code.addInst(OpCode.WRT, 0);
+            code.addInst(OpCode.STC, (int)'u'); code.addInst(OpCode.WRT, 0);
+            code.addInst(OpCode.STC, (int)'e'); code.addInst(OpCode.WRT, 0);
+            code.addInst(OpCode.JMP, labelEnd);
+            
+            // RAMA FALSE 
+            code.addLabel(labelFalse); 
+            code.addInst(OpCode.NOP);
+            code.addInst(OpCode.STC, (int)'f'); code.addInst(OpCode.WRT, 0);
+            code.addInst(OpCode.STC, (int)'a'); code.addInst(OpCode.WRT, 0);
+            code.addInst(OpCode.STC, (int)'l'); code.addInst(OpCode.WRT, 0);
+            code.addInst(OpCode.STC, (int)'s'); code.addInst(OpCode.WRT, 0);
+            code.addInst(OpCode.STC, (int)'e'); code.addInst(OpCode.WRT, 0);
+            
+            code.addLabel(labelEnd); 
+            code.addInst(OpCode.NOP);
+            
+        } else if (tipo == Symbol.Types.CHAR) {
+            code.addInst(OpCode.WRT, 0);
+        } else if (tipo == Symbol.Types.INT) {
+            code.addInst(OpCode.WRT, 1);
+        }
+        // Si es STRING, la regla primario() ya se encarga de inyectar los WRT carácter por carácter.
+    }
+
+    public static void main(String[] args) {
+	    cpt parser = null;
+
+	    try {
+            if(args.length == 0) {
+                parser = new cpt(System.in);
+                parser.Programa("Programa");
+            }
+            else {
+                parser = new cpt(new java.io.FileInputStream(args[0]));
+                String name = args[0].substring(0, args[0].lastIndexOf('.'));
+                parser.Programa(name);
+            }
+		   
+		    //  Bucle de Análisis Léxico
+            // En lugar de llamar a la gramática, pedimos los tokens manualmente para imprimirlos.
+            /*
+                Token t;
+                do {
+                    t = parser.getNextToken(); // Pide el siguiente token al analizador
+
+                    //
+                    // Lo hace CommonTokenAction automáticamente
+                    //
+                    //if (t.kind != cptConstants.EOF) {
+                    //    // Llamamos a la función auxiliar para imprimir en el formato pedido
+                    //    imprimirTokenFormateado(t);
+                    //}
+                    
+                } while (t.kind != cptConstants.EOF);
+            */
+
+		   System.out.println("***** Análisis terminado con éxito *****");
+       
+        }
+        catch (java.io.FileNotFoundException e) {
+            System.err.println ("Fichero " + args[0] + " no encontrado.");
+        }
+        catch (TokenMgrError e) {
+                System.err.println("ERROR LÉXICO: " + e.getMessage());
+        }
+        catch (ParseException e) {
+                System.err.println("ERROR SINTÁCTICO: " + e.getMessage());
+            }
+        catch (Exception e) {
+                // Handle the exception
+                System.err.println("Ha ocurrido una excepcion: " + e.getMessage());
+        }
+    }
+}
+
+PARSER_END(cpt)
+
+TOKEN_MGR_DECLS : 
+{
+    //
+    // Método auxiliar para formatear la salida con el formato: (Línea,Columna): descripción "lexema"
+    //
+    static void imprimirTokenFormateado(Token t) {
+
+        if (t.kind == cptConstants.EOF){
+            return;
+        }
+
+        if (t.kind == cptConstants.tERROR) {
+            System.out.println("ERROR LÉXICO: (" + t.beginLine + ", " + t.beginColumn + "): símbolo no reconocido: " + t.image.toLowerCase());
+            return;
+        }
+
+		//Imprimimos linea y columna
+		System.out.print("(" + t.beginLine + "," + t.beginColumn + "): ");
+        
+        
+		//Después el tipo
+        switch(t.kind) {
+            case cptConstants.tID:
+                System.out.print("identificador");
+                break;
+            
+            case cptConstants.tCONST_INT:
+                System.out.print("constante entera");
+                break;
+                
+            case cptConstants.tCONST_CHAR:
+                System.out.print("constante carácter");
+                break;
+
+            case cptConstants.tCONST_STR:
+                System.out.print("constante cadena");
+                break;
+
+            case cptConstants.tASSIGN:
+                System.out.print("operador asignación");
+                break;
+
+            case cptConstants.tPLUS:
+            case cptConstants.tMINUS:
+            case cptConstants.tMUL:
+            case cptConstants.tDIV:
+            case cptConstants.tMOD:
+                System.out.print("operador aritmético"); 
+                break;
+
+            case cptConstants.tEQ:
+            case cptConstants.tDIFERENTE:
+            case cptConstants.tLT:
+            case cptConstants.tGT:
+            case cptConstants.tLE:
+            case cptConstants.tGE:
+                System.out.print("operador relacional");
+                break;
+
+            case cptConstants.tAND:
+            case cptConstants.tOR:
+            case cptConstants.tNOT:
+                System.out.print("operador lógico");
+                break;
+
+            // Aquí podemos añadir más casos si hacen falte
+            // case cptConstants.tCOMMA: System.out.print("separador"); break;
+
+            case cptConstants.tLPAR:
+            case cptConstants.tRPAR:
+                System.out.print("paréntesis"); 
+                break;
+
+            case cptConstants.tLBRACKET:
+            case cptConstants.tRBRACKET:
+                System.out.print("corchete"); 
+                break;
+
+            case cptConstants.tCOMMA:
+            case cptConstants.tCOLON:
+            case cptConstants.tSEMI:
+                System.out.print("separador");
+                break;
+            
+            case cptConstants.tFLECHA:
+                System.out.print("operador flecha");
+                break;
+            
+            case cptConstants.tPRINT:
+            case cptConstants.tPRINTLN:
+            case cptConstants.tREAD:
+            case cptConstants.tNULL:
+            case cptConstants.tEXIT:
+            case cptConstants.tINT2CHAR:
+            case cptConstants.tCHAR2INT:
+            case cptConstants.tBOOL:
+            case cptConstants.tCHAR:
+            case cptConstants.tINT:
+            case cptConstants.tVAR:
+            case cptConstants.tARRAY:
+            case cptConstants.tSIZE:
+            case cptConstants.tOF:
+            case cptConstants.tPROC:
+            case cptConstants.tFUNC:
+            case cptConstants.tIS:
+            case cptConstants.tMAIN:
+            case cptConstants.tIN:
+            case cptConstants.tOUT:
+            case cptConstants.tINOUT:
+            case cptConstants.tWHEN:
+            case cptConstants.tELSEWHEN:
+            case cptConstants.tELSE:
+            case cptConstants.tLOOP:
+            case cptConstants.tWHILE:
+            case cptConstants.tDONE:
+            case cptConstants.tDO:
+            case cptConstants.tRETURN:
+            case cptConstants.tTRUE:
+            case cptConstants.tFALSE:
+                System.out.print("palabra reservada");
+                break;
+
+            default:
+                // Para palabras reservadas (var, int...) y símbolos sin nombre especial
+                System.out.print("token");
+                break;
+        }
+        
+        // Por último el lexema
+        System.out.println(" \"" + t.image.toLowerCase() + "\"");
+    }
+
+    static void CommonTokenAction(Token t) {
+        imprimirTokenFormateado(t);
+    }
+}
+
+
+
+// Ignoramos espacios y comentarios
+SKIP : {
+    // Saltamos espacios en blanco básicos
+    " " | "\t" | "\n" | "\r"
+    // Comentario: empieza por -- y consume hasta el final de linea, descartándolo
+|   < "--" (~["\n","\r"])* >
+}
+
+
+//Tokens: Palabras del lenguaje
+/*
+Procesadores de Lenguajes
+Lexicografía
+• Se pueden definir tokens internos utilizando #
+– Sólo se pueden utilizar en la especificación de la lexicografía
+– Sirven para mejorar el mantenimiento y la comprensión del lenguaje
+*/
+TOKEN : {
+	< #LETTER: (["a"-"z","A"-"Z"]) > //Case insensitive
+|	< #DIGIT: (["0"-"9"]) >
+}
+
+// Palabras reservadas: tipos. Como se define antes que los identificadores,
+// ningun identificador se podrá llamar como ellas.
+TOKEN : {
+	< tBOOL: "bool" >
+|	< tCHAR: "char" >
+|	< tINT:  "int" >
+|   < tVAR:  "var" >
+|	< tARRAY: "array" > 
+|   < tOF:    "of" >    
+|   < tSIZE:  "size" >
+}
+
+// Signos de puntuación y operadores
+TOKEN : {
+    < tCOMMA: "," >
+|   < tCOLON: ":" >
+|   < tSEMI:  ";" >
+|	< tASSIGN: "=" > //Asignación
+}
+
+// CONSTANTES (Literales)
+TOKEN : {
+    //  Constantes enteras (para el tamaño del array). El const es una secuencia de uno o más dígitos.
+    < tCONST_INT: (<DIGIT>)+ >
+
+    // Constantes caracter
+    // Todos los caracteres se escriben entre comillas simples (excepto +)
+    // La comilla simple se identifica mediante 3 comillas simples
+|    < tCONST_CHAR: ( "'" (~["'"]) "'" ) | "'''" >
+
+    // Reconoce cualquier cosa entre comillas dobles
+|    < tCONST_STR: "\"" ( ~["\""] | "\"\"" )* "\"" >
+}
+
+// Palabras reservadas de control
+TOKEN : {
+    < tPROC: "proc" >
+|   < tMAIN: "main" >
+|   < tFUNC: "func" >
+|   < tFLECHA: "->" >
+|   < tIS: "is" >
+|   < tWHEN: "when" >
+|   < tELSEWHEN: "elsewhen" >
+|   < tELSE: "else" >
+|   < tLOOP: "loop" >
+|   < tWHILE: "while" >
+|   < tRETURN: "return" >
+|   < tINOUT: "inout" >
+|   < tIN: "in" >
+|   < tOUT: "out" >
+|   < tPRINT: "print" >
+|   < tPRINTLN: "println" >
+|   < tDO: "do" >
+|   < tDONE: "done" >
+|   < tREAD: "read" >
+|   < tREADLN: "readln" >
+|   < tEXIT: "exit" >
+|   < tNULL: "null" >
+}
+
+// Operadores relacionales, aritméticos, lógicos y conversion de tipos
+TOKEN : {
+    < tPLUS: "+" >
+|   < tMINUS: "-" >
+|   < tMUL: "*" >
+|   < tDIV: "/" >
+|   < tMOD: "mod" >
+|   < tEQ: "==" >
+|   < tDIFERENTE: "<>" >
+|   < tLT: "<" >
+|   < tGT: ">" >
+|   < tLE: "<=" >
+|   < tGE: ">=" >
+|   < tLPAR: "(" >
+|   < tRPAR: ")" >
+|   < tLBRACKET: "[" >
+|   < tRBRACKET: "]" >
+|   < tAND: "and" >
+|   < tOR:  "or" >
+|   < tNOT: "not" >
+|   < tTRUE: "true" >
+|   < tFALSE: "false" >
+|   < tINT2CHAR: "int2char" >
+|   < tCHAR2INT: "char2int" >
+}
+
+// Identificadores : (Nombre q le damos a las variables)
+// Debe ir al final para que no tenga prioridad sobre las palabras reservadas.
+// Un identificador empieza por letra (nunca por número o "-") y sigue con letras, dígitos o guion bajo.
+TOKEN : {
+    < tID: < LETTER > ( < LETTER > | < DIGIT > | "_" )* > //Nos aseguramos que sólo empiece por letra
+}
+
+// Este token captura cualquier carácter no reconocido hasta el momento
+TOKEN : {
+    < tERROR: ~[] >
+}
+
+
+//  ANALISIS SINTÁCTICO Y SEMÁNTICO
+
+// Regla de inicio del compilador
+void Programa(String filename):
+{
+    Attributes progBodyAttrs = new Attributes();
+    int offsetGlobales = 3; // Variable para recordar cuánto ocupan las globales
+}
+{   
+    // 1. Declaración de variables globales 
+    // Se insertan en el nivel 0 de la tabla de símbolos (el ámbito global por defecto)
+
+    ( variable_array_declaration() )*
+
+    {
+        offsetGlobales = currentOffset; // Guardamos el tamaño del marco global
+    }
+
+    // 2. Procedimiento Principal
+	< tPROC >
+	< tMAIN >
+	< tIS >
+    {   
+        // Abrimos el bloque para las variables locales del main (Nivel 1)
+        tabla_simbolos.insertBlock();
+
+        // Guardamos el offset de las variables globales y reiniciamos para el main
+        cpt.pilaOffsets.push(currentOffset);
+        currentOffset = 3;
+    }
+	progBodyAttrs = program_body()
+	< tDONE >
+    < EOF >
+    {
+
+        System.out.println("------------------------------------------------");
+        System.out.println(tabla_simbolos.toString());                          // Antes de cerrar el bloque principal, imprimimos la tabla para depurar
+        System.out.println("------------------------------------------------");
+
+        if (!hayErrores) {
+            try {
+
+                CodeBlock finalCode = new CodeBlock();
+                
+                String labelBoot = generarEtiqueta();
+                String labelMain = generarEtiqueta();
+
+                // 1. ENP apunta a nuestro trampolín de arranque
+                finalCode.addInst(OpCode.ENP, labelBoot);
+
+                // 2. Código del MAIN
+                finalCode.addLabel(labelMain);
+                finalCode.addInst(OpCode.NOP);
+                finalCode.addBlock(progBodyAttrs.code);
+
+                // Cuando main acaba, retorna el control (Close Subprogram Frame)
+                finalCode.addInst(OpCode.CSF); 
+
+                // 3. TRAMPOLÍN DE ARRANQUE (Bootstrap)
+                finalCode.addLabel(labelBoot);
+                finalCode.addInst(OpCode.NOP);
+                
+                // Crea el marco en memoria para main y salta a él
+                // S = offsetGlobales (protegemos las globales), L = 0 (diferencia de nivel), A = labelMain
+                finalCode.addOSFInst(offsetGlobales, 0, labelMain);
+
+                // 4. LVP: Al volver del main, terminamos la ejecución limpiamente
+                finalCode.addInst(OpCode.LVP);
+                
+                String outFileName = filename + ".pcode";
+                java.io.PrintWriter writer = new java.io.PrintWriter(outFileName, "UTF-8");
+                writer.println(finalCode.toString());
+                writer.close();
+                System.out.println("Compilación finalizada. Se ha generado el fichero " + outFileName);
+            } catch (Exception e) {
+                System.err.println("Error al escribir el archivo de salida: " + e.getMessage());
+            }
+        }
+        tabla_simbolos.removeBlock();
+
+        // Restauramos el offset global por limpieza
+        currentOffset = cpt.pilaOffsets.pop();
+    }
+}
+
+// Cuerpo estándar de cualquier bloque (Main, Procedimiento o Función)
+Attributes program_body():
+{
+    Attributes bodyAttrs = new Attributes();
+    Attributes instAttrs;
+    Attributes subprogramsAttrs = new Attributes();
+    String labelInicioInstrucciones = generarEtiqueta();
+    boolean haySubprogramas = false;
+}
+{   
+    // 1. Declaración de variables locales
+	( variable_array_declaration() )*
+
+
+    // 2. Declaración de Subprogramas (Se guardan en un bloque de código separado temporalmente)
+    ( 
+        {
+            // Si es la primera función que detectamos, generamos el salto sobre el bloque de funciones
+            if (!haySubprogramas) {
+                bodyAttrs.code.addInst(OpCode.JMP, labelInicioInstrucciones);
+                haySubprogramas = true;
+            }
+        }
+        // Generamos el código de los subprogramas y lo guardamos temporalmente
+        ( procedure_declaration(subprogramsAttrs) | function_declaration(subprogramsAttrs) ) 
+    )*
+
+    {
+        // Solo si realmente hubo funciones, añadimos su código y la etiqueta para el salto
+        if (haySubprogramas) {
+            // Añadimos el código de los subprogramas
+            bodyAttrs.code.addBlock(subprogramsAttrs.code);
+            // Colocamos la etiqueta destino para que el flujo principal retome aquí su ejecución
+            bodyAttrs.code.addLabel(labelInicioInstrucciones);
+            bodyAttrs.code.addInst(OpCode.NOP);
+        }
+    }
+
+    // 3. Ejecución de Instrucciones
+	( 
+        instAttrs = instruccion() 
+        { 
+            // Añadimos el código de cada instrucción al cuerpo
+            bodyAttrs.code.addBlock(instAttrs.code); 
+        } 
+    )*
+    { return bodyAttrs; }
+}
+
+// Declaración de Variables (Escalares y Arrays)
+void variable_array_declaration():
+{
+    Token t;
+    ArrayList<Token> listaIdentificadores = new ArrayList<Token>();
+    Symbol.Types tipo;
+    Token tSize;
+}
+{  
+	< tVAR >
+
+    ( 
+        // Caso A: Variables Escalares
+        ( 
+            t = < tID > { listaIdentificadores.add(t); }
+            ( < tCOMMA > t = < tID > { listaIdentificadores.add(t); } )*
+            < tCOLON >  tipo = tipo_variable() 
+        )
+        {
+            for ( Token id : listaIdentificadores ){
+
+                try{
+
+                    Symbol s;
+                    if (tipo == Symbol.Types.INT){
+                        s = new SymbolInt(id.image.toLowerCase());
+                    }
+                    else if (tipo == Symbol.Types.BOOL){
+                        s = new SymbolBool(id.image.toLowerCase());
+                    }
+                    else{                                           // Asumimos que es un char
+                        s = new SymbolChar(id.image.toLowerCase());
+                    }
+                    
+                    s.dir = currentOffset++;
+
+                    tabla_simbolos.insertSymbol(s);
+                }
+                catch (AlreadyDefinedSymbolException e){
+                    System.err.println("ERROR SEMÁNTICO: (" + id.beginLine + ", " + id.beginColumn + "): El símbolo '" + id.image + "' ya existe actualmente.");
+                    hayErrores = true;
+                }
+            }
+        }
+        
+        |
+        
+        // Caso B: Vectores (Arrays)
+        ( 
+            < tARRAY > t =< tID > { listaIdentificadores.add(t); }
+            ( < tCOMMA > t =< tID > { listaIdentificadores.add(t); })*
+            < tOF > tipo = tipo_variable() < tSIZE > tSize = < tCONST_INT > 
+        ) 
+        {
+            for ( Token id : listaIdentificadores ) {
+                try{
+
+                    int tamaño = Integer.parseInt(tSize.image);
+                    SymbolArray s = new SymbolArray(id.image.toLowerCase(), tamaño, tipo);
+
+                    s.dir = currentOffset;  
+
+                    // AÑADE ESTO PARA DEBUGGEAR:
+                    System.out.println("DEBUG MEMORIA -> Array: " + id.image + " | Dir Base: " + s.dir + " | Tamaño: " + tamaño);
+
+                    currentOffset += tamaño;    
+
+                    tabla_simbolos.insertSymbol(s);
+                }
+                catch(AlreadyDefinedSymbolException e) {
+                    System.err.println("ERROR SEMÁNTICO: Identificador de array duplicado: " + id.image);
+                    hayErrores = true;
+                }
+            }
+        }
+    )
+    < tSEMI >    
+}
+
+Symbol.Types tipo_variable():
+{}
+{
+    < tBOOL > { return Symbol.Types.BOOL;}
+|   < tINT > { return Symbol.Types.INT;}
+|   < tCHAR > { return Symbol.Types.CHAR;}
+}
+
+
+// --- SUBPROGRAMAS ---
+
+void procedure_declaration(Attributes subprogramsAttrs):
+{
+    Token t;
+    ArrayList<Symbol> parametros = new ArrayList<Symbol>();
+    ArrayList<Symbol> parametroAux;
+    Attributes bodyAttrs; 
+}
+{
+    < tPROC >
+    t = < tID >
+
+    {
+        // Guardamos memoria del padre y reiniciamos para el subprograma 
+        cpt.pilaOffsets.push(currentOffset);
+        currentOffset = 3;
+    }
+
+    ( < tLPAR > 
+        ( 
+            parametroAux = parametro() { parametros.addAll(parametroAux); }
+            ( < tCOMMA >  parametroAux = parametro() { parametros.addAll(parametroAux); } )* 
+        )? 
+        < tRPAR >             
+    )?   // Asumo que se puede declarar un procedimiento como proc nombre is
+    {   
+        String procLabel = generarEtiqueta();
+        cpt.etiquetasFunciones.put(t.image.toLowerCase(), procLabel);
+        
+        try {
+            // Se inserta en el nivel actual antes de abrir el nuevo bloque 
+            tabla_simbolos.insertSymbol(new SymbolProcedure(t.image.toLowerCase(), parametros));
+        }
+        catch(AlreadyDefinedSymbolException e){
+            System.err.println("ERROR SEMÁNTICO: El procedimiento " + t.image.toLowerCase() + " ya se ha definido previamente");
+        }
+
+        // Crea un nuevo nivel en la tabla de símbolos
+        tabla_simbolos.insertBlock();                                       
+    
+        // Insertamos los parámetros en el nuevo bloque como variables locales
+        for (Symbol p : parametros) {
+            try {
+                tabla_simbolos.insertSymbol(p);
+            } catch(AlreadyDefinedSymbolException e) {
+                System.err.println("ERROR SEMÁNTICO: Parámetro duplicado '" + p.name + "'.");
+            }
+        }
+
+        // Etiqueta de entrada a la que saltará la instrucción OSF/CSF
+        subprogramsAttrs.code.addLabel(procLabel);
+        subprogramsAttrs.code.addInst(OpCode.NOP);
+
+        // Extraemos los parámetros de la pila de evaluación (STACK) 
+        // y los guardamos en las variables locales del marco (FRAMES)
+        for (int i = parametros.size() - 1; i >= 0; i--) {
+            Symbol p = parametros.get(i);
+            subprogramsAttrs.code.addInst(OpCode.SRF, 0, (int)p.dir);
+            subprogramsAttrs.code.addInst(OpCode.ASGI);
+        }
+    }     
+    
+    < tIS >                                                                 // o como proc nombre() is o con parametros 1 o varios (por los test que se nos dan)
+    bodyAttrs = program_body()
+    {   
+        System.out.println("------------------------------------------------");
+        System.out.println("************************************************");
+        System.out.println(t.image.toLowerCase());
+        System.out.println("************************************************");
+        System.out.println("------------------------------------------------");
+        System.out.println(tabla_simbolos.toString());                       // Muestra la tabla de simbolos
+
+        subprogramsAttrs.code.addBlock(bodyAttrs.code);
+
+        // Instrucción LVP (Leave Procedure): Limpia el marco de la pila y retorna al llamador
+        subprogramsAttrs.code.addInst(OpCode.CSF);
+
+        tabla_simbolos.removeBlock();                                        // Elimina las variables locales al salir del bloque
+        currentOffset = cpt.pilaOffsets.pop();                               // Restauramos la memoria del padre
+    }
+    < tDONE >
+}
+
+void function_declaration(Attributes subprogramsAttrs):
+{
+    Token t;
+    ArrayList<Symbol> parametros = new ArrayList<Symbol>();
+    ArrayList<Symbol> parametroAux;
+    Symbol.Types tipo;
+    Attributes bodyAttrs;
+}
+{
+    < tFUNC >
+    t = < tID >
+    {
+        // Guardamos memoria del padre y reiniciamos para la funcion
+        cpt.pilaOffsets.push(currentOffset);
+        currentOffset = 3;
+    }
+    < tLPAR >
+    ( 
+        parametroAux = parametro() { parametros.addAll(parametroAux); }
+        ( < tCOMMA > parametroAux = parametro() { parametros.addAll(parametroAux); } )* 
+    )?
+    < tRPAR >
+    < tFLECHA >
+    tipo = tipo_variable()
+    {   
+        String funcLabel = generarEtiqueta();
+        cpt.etiquetasFunciones.put(t.image.toLowerCase(), funcLabel);
+
+        try {
+            // Se inserta en el nivel actual ANTES de abrir el nuevo bloque 
+            tabla_simbolos.insertSymbol(new SymbolFunction(t.image.toLowerCase(), parametros, tipo));
+        }
+        catch(AlreadyDefinedSymbolException e){
+            System.err.println("ERROR SEMÁNTICO: La función " + t.image.toLowerCase() + " ya se ha definido previamente");
+        }
+
+        tabla_simbolos.insertBlock();
+
+        // Insertamos los parámetros en el nuevo bloque como variables locales
+        for (Symbol p : parametros) {
+            try {
+                tabla_simbolos.insertSymbol(p);
+            } catch(AlreadyDefinedSymbolException e) {
+                System.err.println("ERROR SEMÁNTICO: Parámetro duplicado '" + p.name + "'.");
+            }
+        }
+
+        // Etiqueta de entrada a la que saltará la instrucción OSF/CSF
+        subprogramsAttrs.code.addLabel(funcLabel);
+        subprogramsAttrs.code.addInst(OpCode.NOP);
+
+        // Extraemos los parámetros del STACK a FRAMES
+        for (int i = parametros.size() - 1; i >= 0; i--) {
+            Symbol p = parametros.get(i);
+            subprogramsAttrs.code.addInst(OpCode.SRF, 0, (int)p.dir);
+            subprogramsAttrs.code.addInst(OpCode.ASGI);
+        }
+    }
+    < tIS >
+    bodyAttrs = program_body()
+    {
+        System.out.println("------------------------------------------------");
+        System.out.println("************************************************");
+        System.out.println(t.image.toLowerCase());
+        System.out.println("************************************************");
+        System.out.println("------------------------------------------------");
+        System.out.println(tabla_simbolos.toString());                       
+        
+        subprogramsAttrs.code.addBlock(bodyAttrs.code);
+       
+        subprogramsAttrs.code.addInst(OpCode.CSF);               // Retorno de la máquina P
+        
+        tabla_simbolos.removeBlock();                            // Elimina las variables al salir del bloque
+        currentOffset = cpt.pilaOffsets.pop();                   // Restauramos la memoria del padre
+    }
+    < tDONE >
+}
+
+// Analiza los parámetros en la declaración de una función/procedimiento
+ArrayList<Symbol> parametro():
+{
+    Token tClase;
+    Token t;
+    ArrayList<Token> listaIdentificadores = new ArrayList<Token>();
+    Symbol.Types tipo;
+    Token tSize;
+    Symbol.ParameterClass claseParam = Symbol.ParameterClass.VAL; // Valor por defecto
+    ArrayList<Symbol> parametrosCreados = new ArrayList<Symbol>();
+}
+{   
+    // 1. Identificar si es IN (VAL), o si es OUT/INOUT (REF)
+
+    ( tClase = < tIN > | tClase = < tOUT > | tClase = < tINOUT > )
+    {
+        if (tClase.kind == cptConstants.tIN) {
+            claseParam = Symbol.ParameterClass.VAL;     // Los escalares IN van por VALOR
+        } else {
+            claseParam = Symbol.ParameterClass.REF;     // OUT e INOUT van obligatoriamente por REFERENCIA
+        } 
+    }
+
+    
+
+    t = < tID > { listaIdentificadores.add(t); }
+    ( < tCOMMA > t = < tID > { listaIdentificadores.add(t); } )*
+    < tCOLON >
+
+
+    (
+        // Caso 1: Es un Array siempre se pasan por referencia por eficiencia sin importar si son 'in' o 'out'
+        ( < tARRAY > < tOF >  tipo = tipo_variable()  < tSIZE > tSize = < tCONST_INT > ) 
+        
+        {   
+            claseParam = Symbol.ParameterClass.REF;     
+
+            for ( Token id : listaIdentificadores ) {
+                int tamaño = Integer.parseInt(tSize.image);
+                SymbolArray s = new SymbolArray(id.image.toLowerCase(), tamaño, tipo, claseParam);
+                s.dir = currentOffset++;
+                parametrosCreados.add(s);
+            }
+        }
+        
+        |
+
+        // Caso 2: Es un Escalar
+        ( tipo = tipo_variable() )
+
+        {
+            for ( Token id : listaIdentificadores ) {
+                Symbol s;
+                if (tipo == Symbol.Types.INT) {
+                    s = new SymbolInt(id.image.toLowerCase(), claseParam);
+                }
+                else if (tipo == Symbol.Types.BOOL) {
+                    s = new SymbolBool(id.image.toLowerCase(), claseParam);
+                }
+                else { // Asumimos char
+                    s = new SymbolChar(id.image.toLowerCase(), claseParam);
+                }
+                s.dir = currentOffset++;
+                parametrosCreados.add(s);
+            }
+        } 
+    )
+
+   { return parametrosCreados; }
+}
+
+
+// --- INSTRUCCIONES PRINCIPALES ---
+
+Attributes instruccion():
+{
+    Attributes instAttrs = new Attributes();
+    Attributes expAttrs;
+}
+{   
+    (
+        instAttrs = inst_print() 
+      | instAttrs = inst_println() 
+      | instAttrs = inst_read() 
+      | instAttrs = inst_readln() 
+      | LOOKAHEAD(2) instAttrs = inst_ass() 
+      | instAttrs = inst_while() 
+      | instAttrs = inst_seleccion() 
+      | < tEXIT > < tSEMI > 
+        { 
+            instAttrs.code.addInst(OpCode.LVP); 
+        }
+      | < tNULL > < tSEMI > 
+        { 
+            // NOP (No Operation): Instrucción vacía, consume un ciclo pero no hace nada
+            instAttrs.code.addInst(OpCode.NOP); 
+        }
+      | < tRETURN > expAttrs = expresion() < tSEMI > 
+        { 
+            // 1. Evaluamos la expresión para que el resultado quede en la cima de la pila
+            instAttrs.code.addBlock(expAttrs.code);
+            
+            instAttrs.code.addInst(OpCode.CSF); 
+        }
+
+      | LOOKAHEAD(2) instAttrs = inst_invocacion_p_f()
+    )
+
+    { return instAttrs; }  
+}
+
+
+// Regla auxiliar para leer la dirección de una variable (usada en READ/READLN)
+Attributes variable_leible():
+{
+    Attributes attrs = new Attributes();
+    Token t;
+    Attributes expAttrs;
+    Symbol sym = null;
+}
+{
+    t = < tID > {
+        try {
+            sym = tabla_simbolos.getSymbol(t.image.toLowerCase());
+            int f = tabla_simbolos.level - sym.nivel;
+            
+            // 1. Obtenemos la dirección de la celda donde está la variable o el puntero
+            attrs.code.addInst(OpCode.SRF, f, (int)sym.dir); 
+
+            // 2. Si es por referencia, el valor en esa celda ES la dirección real.
+            // Debemos hacer DRF para que en la pila esté la dirección real base.
+            if (sym.parClass == Symbol.ParameterClass.REF) {
+                attrs.code.addInst(OpCode.DRF);
+            }
+            
+        } catch (SymbolNotFoundException e) {
+            System.err.println("ERROR SEMÁNTICO: (" + t.beginLine + "," + t.beginColumn + "): Variable '" + t.image.toLowerCase() + "' no declarada.");
+            hayErrores = true;
+        }
+    }
+
+    // 3. Si hay corchetes, sumamos el índice a la dirección que ya está en la cima
+    (
+        < tLBRACKET > expAttrs = expresion() < tRBRACKET >
+        {
+            if (sym != null && !(sym instanceof SymbolArray)) {
+                System.err.println("ERROR SEMÁNTICO: (" + t.beginLine + "," + t.beginColumn + "): Variable '" + t.image.toLowerCase() + "' no es un array.");
+                hayErrores = true;
+            }
+            attrs.code.addBlock(expAttrs.code);
+            attrs.code.addInst(OpCode.PLUS); // DirecciónBase + Índice
+        }
+    )?
+
+    { 
+        if (sym != null) {
+            Symbol.Types tipoLeido = sym.type;
+            if (sym instanceof SymbolArray) {
+                tipoLeido = ((SymbolArray)sym).baseType;
+            }
+            // 4. RD consume la dirección de la cima de la pila y guarda el dato ahí.
+            int modo = (tipoLeido == Symbol.Types.CHAR) ? 0 : 1;
+            attrs.code.addInst(OpCode.RD, modo); 
+        }
+        return attrs; 
+    }
+}
+
+Attributes inst_read():
+{
+    Attributes instAttrs = new Attributes();
+    Attributes varAttrs = new Attributes();
+}
+{
+    < tREAD >
+    < tLPAR >
+    
+    // Leemos el primer parámetro
+    varAttrs  = variable_leible()
+    { 
+        instAttrs.code.addBlock(varAttrs.code);
+    }
+
+    // Leemos los demás si los hay
+    (   
+        < tCOMMA > varAttrs = variable_leible()
+        {
+            instAttrs.code.addBlock(varAttrs.code);
+        } 
+    )*
+
+    < tRPAR >
+    < tSEMI >
+    { return instAttrs; } 
+}
+
+Attributes inst_readln():
+{ 
+    Attributes instAttrs = new Attributes();
+    Attributes varAttrs;
+}
+{
+    < tREADLN >
+    < tLPAR >
+    ( 
+        varAttrs = variable_leible()
+        {
+            instAttrs.code.addBlock(varAttrs.code);
+        }
+
+        ( 
+            < tCOMMA >
+            varAttrs = variable_leible()  
+            {
+            instAttrs.code.addBlock(varAttrs.code);
+            } 
+        )* 
+    )?
+    < tRPAR >  < tSEMI >
+
+    { 
+        return instAttrs; 
+    }
+}
+
+Attributes inst_print():
+{
+    Attributes instAttrs = new Attributes();
+    Attributes expAttrs;
+}
+{
+    < tPRINT >
+    < tLPAR > 
+    expAttrs = expresion() 
+    {
+        instAttrs.code.addBlock(expAttrs.code);
+
+        cpt.generarImpresionEscalar(instAttrs.code, expAttrs.type);
+    }
+    ( 
+        < tCOMMA >  
+        expAttrs = expresion() 
+        {
+            instAttrs.code.addBlock(expAttrs.code);
+
+            cpt.generarImpresionEscalar(instAttrs.code, expAttrs.type);
+        }
+    )*
+    < tRPAR >
+    < tSEMI >
+    { return instAttrs; }
+}
+
+Attributes inst_println():
+{
+    Attributes instAttrs = new Attributes();
+    Attributes expAttrs;
+}
+{
+    < tPRINTLN >
+    < tLPAR > 
+    ( 
+        expAttrs = expresion ()
+        {
+            instAttrs.code.addBlock(expAttrs.code);
+
+            cpt.generarImpresionEscalar(instAttrs.code, expAttrs.type);
+        }
+        ( 
+            < tCOMMA >  
+            expAttrs = expresion()
+            {
+                instAttrs.code.addBlock(expAttrs.code);
+
+                cpt.generarImpresionEscalar(instAttrs.code, expAttrs.type);
+            }  
+        )* 
+    )?
+    < tRPAR > 
+    < tSEMI >
+    { 
+        // Forzamos la escritura del carácter Salto de Línea (ASCII 10) al final
+        instAttrs.code.addInst(OpCode.STC, 10);
+        instAttrs.code.addInst(OpCode.WRT, 0);
+        return instAttrs; 
+    }
+}
+
+// Invocación a Procedimientos y Funciones
+Attributes inst_invocacion_p_f():
+{
+    Token t;
+    Attributes instAttrs = new Attributes();
+    Attributes expAttrs; 
+    String prefijo;
+    Symbol symFunc = null;
+    ArrayList<Symbol> parametrosOriginales = new ArrayList<Symbol>();
+    int numParam = 0;
+    CodeBlock paramsCode = new CodeBlock();
+}
+{
+    t = < tID > {
+        try {
+            symFunc = tabla_simbolos.getSymbol(t.image.toLowerCase());
+            
+            // Recuperamos la firma de la función para saber qué tipo de parámetros espera
+            if (symFunc instanceof SymbolProcedure) {
+                parametrosOriginales = ((SymbolProcedure)symFunc).parList;
+            } else if (symFunc instanceof SymbolFunction) {
+                parametrosOriginales = ((SymbolFunction)symFunc).parList;
+            }
+            
+        } catch (SymbolNotFoundException e) {
+            System.err.println("ERROR SEMÁNTICO: Procedimiento / Función '" + t.image.toLowerCase() + "' no declarada");
+            hayErrores = true;
+        }
+    }
+    < tLPAR > 
+    ( 
+        // 2. Cargamos los parámetros en la Pila
+        { 
+            cpt.paramEsperado = (numParam < parametrosOriginales.size()) ? parametrosOriginales.get(numParam) : null; 
+        }
+        expAttrs = parametro_llamada() 
+        { 
+            paramsCode.addBlock(expAttrs.code); 
+            numParam++;
+        }
+        
+        ( 
+            <tCOMMA> 
+            { 
+                cpt.paramEsperado = (numParam < parametrosOriginales.size()) ? parametrosOriginales.get(numParam) : null; 
+            }
+            expAttrs = parametro_llamada() 
+            { 
+                paramsCode.addBlock(expAttrs.code); 
+                numParam++;
+            }
+        )* 
+    )?
+    < tRPAR >
+    < tSEMI >
+    {   
+
+        instAttrs.code.addBlock(paramsCode);
+
+        // 3. Ejecutamos el OSF al final de la carga de parámetros.
+        // OSF (S)ize (L)evels (A)ddr
+        // S = currentOffset (El tamaño del marco actual que realiza la llamada)
+
+        int f = tabla_simbolos.level - symFunc.nivel;
+        String labelDestino = cpt.etiquetasFunciones.get(t.image.toLowerCase());
+        
+        // OSF crea el marco respetando los parámetros ya apilados y salta a la etiqueta.
+        instAttrs.code.addOSFInst(cpt.currentOffset, f, labelDestino);
+        
+        if (symFunc instanceof SymbolFunction) {
+            instAttrs.code.addInst(OpCode.POP);
+        }
+
+        return instAttrs;
+    }
+}
+
+// Auxiliar: Analiza y empuja a la pila los parámetros de una llamada
+Attributes parametro_llamada():
+{
+    Attributes paramAttrs = new Attributes();
+    Attributes expAttrs;
+    Token t;
+    Symbol paramReal = null;
+    Attributes indexAttrs;
+}
+{
+    // Si llegamos aquí sin fallar sintácticamente (esto es un pequeño hack de JavaCC, lo haremos con Lookaheads)
+    (
+        // CASO A: Parámetro por REFERENCIA (Out, Inout, Arrays)
+        // Exigimos sintácticamente pasar una variable (no se permiten expresiones) 
+        // y NO se ejecuta la instrucción de desreferencia (DRF).
+        LOOKAHEAD( { cpt.paramEsperado != null && cpt.paramEsperado.parClass == Symbol.ParameterClass.REF } )
+        (
+            t = < tID > {
+                try {
+                    paramReal = tabla_simbolos.getSymbol(t.image.toLowerCase());
+                    int f = tabla_simbolos.level - paramReal.nivel;
+                    
+                    if (paramReal.parClass == Symbol.ParameterClass.REF) {
+                        // Si ya es una referencia, el valor de la celda es la dirección que queremos
+                        paramAttrs.code.addInst(OpCode.SRF, f, (int)paramReal.dir);
+                        paramAttrs.code.addInst(OpCode.DRF); 
+                    } else {
+                        // Si es una variable normal, subimos su dirección
+                        paramAttrs.code.addInst(OpCode.SRF, f, (int)paramReal.dir);
+                    }
+                    
+                } catch (SymbolNotFoundException e) {
+                    System.err.println("ERROR SEMÁNTICO: (" + t.beginLine + "," + t.beginColumn + "): Variable '" + t.image.toLowerCase() + "' no declarada");
+                    hayErrores = true;
+                }
+            }
+            // Si es un acceso a array, sumamos el índice a la dirección base
+            (
+                < tLBRACKET > indexAttrs = expresion() < tRBRACKET >
+                {
+                    paramAttrs.code.addBlock(indexAttrs.code);
+                    paramAttrs.code.addInst(OpCode.PLUS);
+                }
+            )?
+            
+            // ¡NO HACEMOS DRF! Dejamos la dirección en la pila
+            { return paramAttrs; }
+        )
+        
+        |
+        
+        // CASO B: Parámetro por VALOR (In normal)
+        // Evaluamos la expresión de forma estándar (hace DRF automáticamente sacando el valor crudo)
+        expAttrs = expresion()
+        {
+            paramAttrs.code.addBlock(expAttrs.code);
+            return paramAttrs;
+        }
+    )
+}
+
+Attributes inst_ass():
+{
+    Attributes instAttrs = new Attributes();
+    Attributes expAttrs;
+    Attributes indexAttrs = null;
+    Token t;
+    Symbol sym = null;
+}
+{
+    t = < tID > {
+        try {
+            sym = tabla_simbolos.getSymbol(t.image.toLowerCase());
+            
+            // 1. Guardamos la Dirección Destino en la Pila (SRF)
+            int f = tabla_simbolos.level - sym.nivel;
+            instAttrs.code.addInst(OpCode.SRF, f, (int)sym.dir);
+
+            if (sym.parClass == Symbol.ParameterClass.REF) {
+                instAttrs.code.addInst(OpCode.DRF);
+            }
+            
+        } catch (SymbolNotFoundException e) {
+            System.err.println("ERROR SEMÁNTICO: (" + t.beginLine + "," + t.beginColumn + "): Variable '" + t.image.toLowerCase() + "' no declarada");
+            hayErrores = true;
+        }
+    }
+    
+    ( 
+        < tLBRACKET > indexAttrs = expresion() < tRBRACKET > 
+        {
+            if (sym != null && !(sym instanceof SymbolArray)) {
+                System.err.println("ERROR SEMÁNTICO: (" + t.beginLine + "," + t.beginColumn + "): Variable '" + t.image.toLowerCase() + "' no es un array.");
+                hayErrores = true;
+            }
+            
+            // Modificador de array: Sumamos el índice calculado a la Dirección Base (PLUS)
+            instAttrs.code.addBlock(indexAttrs.code);
+            instAttrs.code.addInst(OpCode.PLUS);
+        }
+    )?
+
+    < tASSIGN >
+
+    // 2. Evaluamos la expresión, dejando el Valor en la Pila
+    expAttrs = expresion()
+    < tSEMI >
+    {   
+
+        // Chequeos Semánticos
+        if (sym != null) {
+            
+            // Determinamos el tipo real que espera la variable
+            Symbol.Types tipoEsperado = sym.type;
+
+            if (sym instanceof SymbolArray) {
+                if (indexAttrs == null) {
+                    System.err.println("ERROR SEMÁNTICO: (" + t.beginLine + "," + t.beginColumn + "): No se permite la asignación directa de arrays completos ('" + t.image.toLowerCase() + "').");
+                    hayErrores = true;
+                } else {
+                    // Si es un acceso válido a array, el tipo esperado es el tipo base del array
+                    tipoEsperado = ((SymbolArray)sym).baseType;
+                }
+            }
+
+            // Comprobar que los tipos coinciden exactamente
+            if (tipoEsperado != null && tipoEsperado != expAttrs.type) {
+                System.err.println("ERROR SEMÁNTICO: (" + t.beginLine + "," + t.beginColumn + "): Incompatibilidad de tipos. No se puede asignar un valor de tipo '" + expAttrs.type + "' a la variable de destino que espera '" + tipoEsperado + "'.");
+                hayErrores = true;
+            }
+        }
+
+        // Añadimos el código que calcula el valor y lo deja en la cima de la pila
+        instAttrs.code.addBlock(expAttrs.code);
+        
+        // 3. Ejecutamos ASG. La máquina cogerá el valor de la cima y lo guardará en la dirección que metimos antes.
+        instAttrs.code.addInst(OpCode.ASG);
+        
+        return instAttrs;
+    }
+}
+
+// Bucle WHILE
+Attributes inst_while():
+{
+    Attributes instAttrs = new Attributes();
+    Attributes expAttrs;
+    Attributes bodyAttrs;
+    String labelInicio = generarEtiqueta();
+    String labelFin = generarEtiqueta();
+}
+{
+    < tLOOP >
+    < tWHILE >
+    < tLPAR >
+    expAttrs = expresion()
+    < tRPAR >
+    < tDO >
+    {
+        // 1. Marca de inicio del bucle
+        instAttrs.code.addLabel(labelInicio);
+        instAttrs.code.addInst(OpCode.NOP);
+
+        // Evaluamos la expresión (deja el resultado en la pila)
+        instAttrs.code.addBlock(expAttrs.code);
+        
+        if (expAttrs.type != Symbol.Types.BOOL) {
+            System.err.println("ERROR SEMÁNTICO: La condición del bucle while debe ser de tipo booleano.");
+            hayErrores = true;
+        }
+        
+        // 2. Jump False (JMF): Si la evaluación dio '0' (False), saltamos al fin del bucle
+        instAttrs.code.addInst(OpCode.JMF, labelFin);
+        instAttrs.code.addInst(OpCode.NOP);
+    }
+    ( 
+        bodyAttrs = instruccion()
+        {
+            // Añadimos el código del cuerpo del bucle
+            instAttrs.code.addBlock(bodyAttrs.code);
+        }
+    )+
+    < tDONE >
+
+    {   
+        // 3. Jump (JMP): Regresamos forzosamente al inicio para reevaluar la condición
+        instAttrs.code.addInst(OpCode.JMP, labelInicio);
+
+        // 4. Colocamos la etiqueta de fin justo después del salto
+        instAttrs.code.addLabel(labelFin);
+
+        return instAttrs;
+    }
+}
+
+// Estructura de Selección (WHEN / ELSEWHEN / ELSE) (requisito 10)
+Attributes inst_seleccion() :
+{
+    Attributes instAttrs = new Attributes();
+    Attributes expAttrs;
+    Attributes bodyAttrs;
+    String labelSiguiente; // Etiqueta para saltar a la siguiente condición si la actual falla
+    String labelFin = generarEtiqueta(); // Etiqueta común para saltar al final del bloque
+}
+{
+    { labelSiguiente = generarEtiqueta(); }
+
+    // --- RAMA WHEN (Obligatorio)---
+
+    // Estructura: when ( expresión ) do ... instrucciones ...
+    < tWHEN > 
+    ( LOOKAHEAD(2) < tLPAR > expAttrs = expresion() < tRPAR > | expAttrs = expresion() ) 
+    < tDO >
+    {
+        instAttrs.code.addBlock(expAttrs.code);
+        
+        // Si no se cumple, saltamos al primer ELSEWHEN (o al final si no hay)
+        instAttrs.code.addInst(OpCode.JMF, labelSiguiente);
+    }
+    ( 
+        bodyAttrs = instruccion() 
+        { instAttrs.code.addBlock(bodyAttrs.code); }
+    )+ 
+    {
+        // Si ejecutamos el interior con éxito, saltamos ignorando todo lo demás
+        instAttrs.code.addInst(OpCode.JMP, labelFin);
+        
+
+        // Colocamos la etiqueta para la siguiente comprobación
+        instAttrs.code.addLabel(labelSiguiente);
+        instAttrs.code.addInst(OpCode.NOP);
+    }
+
+    // --- RAMA ELSEWHEN (Opcionales y múltiples) ---
+    // Deben aparecer seguidas después del when
+    (
+        { labelSiguiente = generarEtiqueta(); }
+        <tELSEWHEN> 
+        ( LOOKAHEAD(2) < tLPAR > expAttrs = expresion() < tRPAR > | expAttrs = expresion() ) 
+        < tDO >
+        {
+            instAttrs.code.addBlock(expAttrs.code);
+            instAttrs.code.addInst(OpCode.JMF, labelSiguiente);
+        }
+
+        ( 
+            bodyAttrs = instruccion() 
+            { instAttrs.code.addBlock(bodyAttrs.code); }
+        )+
+        {
+            // Salto al final si se cumple esta rama
+            instAttrs.code.addInst(OpCode.JMP, labelFin);
+            // Colocamos la etiqueta para la siguiente comprobación
+            instAttrs.code.addLabel(labelSiguiente);
+            instAttrs.code.addInst(OpCode.NOP);
+        }
+    )*
+
+    // --- RAMA ELSE (Opcional, solo una vez) ---
+    // Si aparece, debe ser la última antes del done
+    (
+        < tELSE >
+        ( 
+            bodyAttrs = instruccion() 
+            { instAttrs.code.addBlock(bodyAttrs.code); }
+        )+
+    )?
+
+    // 4. Cierre de la instrucción
+    < tDONE >
+    {   
+        // Marca donde desembocan todos los saltos exitosos o los fallos en cadena
+        instAttrs.code.addLabel(labelFin);
+        instAttrs.code.addInst(OpCode.NOP);
+        return instAttrs;
+    }
+}
+
+// ==============================================================================
+// ================= MATEMÁTICAS Y EXPRESIONES (Despliegue Recursivo) ===========
+// ==============================================================================
+
+Attributes primario() :
+{
+    Attributes primAttrs = new Attributes();
+    Token t;
+    Attributes indexAttrs = new Attributes();
+    Symbol sym = null;
+
+    int nParams = 0;
+    CodeBlock pCode = new CodeBlock();
+    ArrayList<Symbol> parametrosOriginales = new ArrayList<Symbol>();
+}
+{
+
+    (
+        // Conversiones explícitas de tipos
+        ( 
+            < tINT2CHAR > < tLPAR > indexAttrs = expresion() < tRPAR > 
+            {
+                if (indexAttrs.type != Symbol.Types.INT) {
+                    System.err.println("ERROR SEMÁNTICO: int2char requiere una expresión de tipo entero.");
+                    hayErrores = true;
+                }
+                // Como la P-Máquina usa enteros para los caracteres, solo cambiamos el tipo semántico
+                primAttrs.code.addBlock(indexAttrs.code);
+                primAttrs.type = Symbol.Types.CHAR;
+            }
+        )
+    |   ( 
+            < tCHAR2INT > < tLPAR > indexAttrs = expresion() < tRPAR > 
+            {
+                if (indexAttrs.type != Symbol.Types.CHAR) {
+                    System.err.println("ERROR SEMÁNTICO: char2int requiere una expresión de tipo carácter.");
+                    hayErrores = true;
+                }
+                // Mismo caso, el dato en la pila ya es el valor ASCII
+                primAttrs.code.addBlock(indexAttrs.code);
+                primAttrs.type = Symbol.Types.INT;
+            }
+        )
+
+    // Invocacion a función (debe devolver un valor a la pila al acabar)
+    |   LOOKAHEAD(2)
+        (
+            t = < tID >
+            < tLPAR > 
+            { 
+                nParams = 0; 
+                pCode = new CodeBlock(); 
+                parametrosOriginales = new ArrayList<Symbol>();
+                try {
+                    sym = tabla_simbolos.getSymbol(t.image.toLowerCase());
+
+                    // Si es una función, la expresión toma el valor de su tipo de retorno
+                    if (sym instanceof SymbolFunction) {
+                        primAttrs.type = ((SymbolFunction)sym).returnType; 
+                        parametrosOriginales = ((SymbolFunction)sym).parList;
+                    } else {
+                        primAttrs.type = sym.type;
+                    }
+                } catch (SymbolNotFoundException e) { hayErrores = true; }
+            }
+            ( 
+                // 2. Apilamos los parámetros usando la variable indexAttrs temporalmente
+
+                { cpt.paramEsperado = (nParams < parametrosOriginales.size()) ? parametrosOriginales.get(nParams) : null; }
+                indexAttrs = parametro_llamada()
+                { 
+                    primAttrs.code.addBlock(indexAttrs.code); 
+                    nParams++;
+                }
+                
+                ( 
+                    < tCOMMA > 
+                    { cpt.paramEsperado = (nParams < parametrosOriginales.size()) ? parametrosOriginales.get(nParams) : null; }
+                    indexAttrs = parametro_llamada()                    
+                    { 
+                        pCode.addBlock(indexAttrs.code);
+                        nParams++;
+                    }
+                )* 
+            )? 
+            < tRPAR >
+            {
+                // Primero apilamos los argumentos
+                primAttrs.code.addBlock(pCode);
+                
+                // Calculamos niveles y saltamos con OSF
+                int f = tabla_simbolos.level - sym.nivel;
+                String labelDestino = cpt.etiquetasFunciones.get(t.image.toLowerCase());
+                
+                // OSF: S (num params), L (niveles), A (dirección etiqueta)
+                primAttrs.code.addOSFInst(cpt.currentOffset, f, labelDestino);
+
+                return primAttrs;
+            }
+        )
+    //  Constantes literales
+    |   t = < tCONST_INT > {
+            primAttrs.type = Symbol.Types.INT;
+            primAttrs.code.addInst(OpCode.STC, Integer.parseInt(t.image));
+        }
+    |	t = < tCONST_CHAR > {
+            primAttrs.type = Symbol.Types.CHAR;
+
+            // Tratamos el caso especial de la comilla simple ''', sino cogemos el char interior
+            char c = t.image.equals("'''") ? '\'' : t.image.charAt(1);
+            primAttrs.code.addInst(OpCode.STC, (int)c);
+    }
+    |   t = < tCONST_STR > {
+            primAttrs.type = Symbol.Types.STRING;
+
+            // Quitamos las comillas del principio y final
+            String valString = t.image.substring(1, t.image.length() - 1);
+
+            // Reemplazamos las dobles comillas por una sola para su correcta impresión
+            valString = valString.replace("\"\"", "\"");
+
+            // Genera una ristra de instrucciones individuales para imprimir cadenas largas
+            for (char c : valString.toCharArray()) {
+                primAttrs.code.addInst(OpCode.STC, (int)c);
+                primAttrs.code.addInst(OpCode.WRT, 0); 
+            }
+        }
+    |   t = < tTRUE > {
+            primAttrs.type = Symbol.Types.BOOL;
+            primAttrs.code.addInst(OpCode.STC, 1);
+        }
+    |   t = < tFALSE > {
+            primAttrs.type = Symbol.Types.BOOL;
+            primAttrs.code.addInst(OpCode.STC, 0);
+        }
+
+    // Variable Común o Array
+    |   t = < tID > {
+            try {
+                sym = tabla_simbolos.getSymbol(t.image.toLowerCase());
+                primAttrs.type = sym.type;
+                
+                // 1. Diferencia de niveles para el encadenamiento estático
+                int f = tabla_simbolos.level - sym.nivel;
+                
+                // 2. Metemos la dirección en la pila
+                primAttrs.code.addInst(OpCode.SRF, f, (int)sym.dir);
+
+                // Si es por referencia, sacamos primero su dirección real
+                if (sym.parClass == Symbol.ParameterClass.REF) {
+                    primAttrs.code.addInst(OpCode.DRF);
+                }
+                
+            } catch (SymbolNotFoundException e) {
+                System.err.println("ERROR SEMÁNTICO: (" + t.beginLine + "," + t.beginColumn + "): Variable '" + t.image.toLowerCase() + "' no declarada.");
+                hayErrores = true;
+            }
+        }
+
+        (
+            < tLBRACKET > indexAttrs = expresion() < tRBRACKET >
+            {
+                if (sym != null && !(sym instanceof SymbolArray)) {
+                    System.err.println("ERROR SEMÁNTICO: (" + t.beginLine + "," + t.beginColumn + "): La variable '" + t.image.toLowerCase() + "' no es un array.");
+                    hayErrores = true;
+                } else if (sym instanceof SymbolArray) {
+                    // Al acceder a una posición, la expresión toma el tipo base del array
+                    primAttrs.type = ((SymbolArray)sym).baseType;
+                }
+                
+                // 2. Calculamos el índice y lo sumamos (PLUS)
+                primAttrs.code.addBlock(indexAttrs.code);
+                primAttrs.code.addInst(OpCode.PLUS);
+            }
+        )?
+
+        {
+            // 3. DRF (De-Reference): Transforma la dirección de memoria en el valor puro que contiene
+            primAttrs.code.addInst(OpCode.DRF);
+        }
+    )
+    { 
+        return primAttrs; 
+        
+    }
+}
+
+Attributes factor() :
+{
+    Attributes attrs; 
+    Token tSign = null;
+}
+{
+    ( tSign = < tNOT > | tSign = < tPLUS > | tSign = < tMINUS > )?
+    ( < tLPAR > attrs = expresion() < tRPAR > | attrs = primario() )
+    { 
+        if (tSign != null) {
+            if (tSign.kind == cptConstants.tMINUS) {
+                if (attrs.type != Symbol.Types.INT) { 
+                    System.err.println("ERROR SEMÁNTICO: (" + tSign.beginLine + "," + tSign.beginColumn + "): Operador unario '-' exige INT."); 
+                    hayErrores = true; 
+                }
+                attrs.code.addInst(OpCode.NGI); 
+            }
+            else if (tSign.kind == cptConstants.tNOT) {
+                if (attrs.type != Symbol.Types.BOOL) { 
+                    System.err.println("ERROR SEMÁNTICO: (" + tSign.beginLine + "," + tSign.beginColumn + "): Operador unario 'not' exige BOOL."); 
+                    hayErrores = true; 
+                }
+                attrs.code.addInst(OpCode.NGB); 
+            }
+        }
+        return attrs; 
+    }
+}
+
+//
+//  ARITMÉTICA
+//
+
+// 1. División: Recursividad por la DERECHA
+Attributes factor_div() :
+{
+    Attributes attrs = new Attributes();
+    Attributes rightAttrs;
+    Token t;
+}
+{
+    attrs = factor()
+    (
+        t = < tDIV >
+        rightAttrs = factor_div() // Llamada recursiva a sí misma
+        {
+            if (attrs.type != Symbol.Types.INT || rightAttrs.type != Symbol.Types.INT) {
+                System.err.println("ERROR SEMÁNTICO: (" + t.beginLine + "," + t.beginColumn + "): La división solo admite operandos de tipo INT.");
+                hayErrores = true;
+            }
+            attrs.code.addBlock(rightAttrs.code);
+            attrs.code.addInst(OpCode.DIV);
+        }
+    )?
+    { return attrs; }
+}
+
+// 2. Multiplicación y Módulo: Asociatividad por la IZQUIERDA
+Attributes termino() :
+{
+    Attributes attrs = new Attributes();
+    Attributes rightAttrs;
+    Token tOp;
+}
+{
+    attrs = factor_div()
+    ( 
+        ( tOp = < tMUL > | tOp = < tMOD > )
+        rightAttrs = factor_div()
+        {
+            if (attrs.type != Symbol.Types.INT || rightAttrs.type != Symbol.Types.INT) {
+                System.err.println("ERROR SEMÁNTICO: (" + tOp.beginLine + "," + tOp.beginColumn + "): Los operadores aritméticos (*, mod) solo admiten operandos de tipo INT.");
+                hayErrores = true;
+            }
+            attrs.code.addBlock(rightAttrs.code);
+            if (tOp.kind == cptConstants.tMUL) attrs.code.addInst(OpCode.TMS);
+            else attrs.code.addInst(OpCode.MOD);
+        }
+    )*
+    { return attrs; }
+}
+
+// 3. Suma y Resta
+Attributes expresion_simple() :
+{
+    Attributes attrs = new Attributes();
+    Attributes rightAttrs;
+    Token tOp;
+}
+{ 
+    attrs = termino()
+    ( 
+        ( tOp = < tPLUS > | tOp = < tMINUS > )
+        rightAttrs = termino()
+        {
+            if (attrs.type != Symbol.Types.INT || rightAttrs.type != Symbol.Types.INT) {
+                System.err.println("ERROR SEMÁNTICO: (" + tOp.beginLine + "," + tOp.beginColumn + "): Los operadores aritméticos (+, -) solo admiten operandos de tipo INT.");
+                hayErrores = true;
+            }
+            attrs.code.addBlock(rightAttrs.code);
+            if (tOp.kind == cptConstants.tPLUS) attrs.code.addInst(OpCode.PLUS);
+            else attrs.code.addInst(OpCode.SBT);
+        }
+    )*
+    { return attrs; }
+}
+
+// 4. Operadores Relacionales
+Attributes relacion() :
+{
+    Attributes attrs = new Attributes();
+    Attributes rightAttrs;
+    Token tOp = null; 
+    OpCode op = null; 
+}
+{
+    attrs = expresion_simple()
+    ( 
+        
+        ( tOp = < tEQ >        { op = OpCode.EQ; }
+        | tOp = < tLT >        { op = OpCode.LT; }
+        | tOp = < tGT >        { op = OpCode.GT; }
+        | tOp = < tLE >        { op = OpCode.LTE; }
+        | tOp = < tGE >        { op = OpCode.GTE; }
+        | tOp = < tDIFERENTE > { op = OpCode.NEQ; }
+        )
+        
+        rightAttrs = expresion_simple()
+        
+        {
+            if (attrs.type != rightAttrs.type) {
+                System.err.println("ERROR SEMÁNTICO: (" + tOp.beginLine + "," + tOp.beginColumn + "): Los operadores relacionales exigen operandos del mismo tipo.");
+                hayErrores = true;
+            }
+            attrs.code.addBlock(rightAttrs.code);
+            attrs.code.addInst(op);
+            attrs.type = Symbol.Types.BOOL; // Una relación siempre devuelve BOOL
+        }
+    )?
+    { return attrs; }
+}
+
+// 5. Operadores Lógicos
+Attributes expresion() :
+{
+    Attributes attrs = new Attributes();
+    Attributes rightAttrs;
+    Token tOp;
+}
+{
+    attrs = relacion()
+    ( 
+        (tOp = < tAND > | tOp = < tOR > ) 
+        rightAttrs = relacion() 
+        {
+            if (attrs.type != Symbol.Types.BOOL || rightAttrs.type != Symbol.Types.BOOL) {
+                System.err.println("ERROR SEMÁNTICO: (" + tOp.beginLine + "," + tOp.beginColumn + "): Los operadores lógicos solo admiten operandos de tipo BOOL.");
+                hayErrores = true;
+            }
+            attrs.code.addBlock(rightAttrs.code);
+            if (tOp.kind == cptConstants.tAND) attrs.code.addInst(OpCode.AND);
+            else attrs.code.addInst(OpCode.OR);
+            attrs.type = Symbol.Types.BOOL;
+        }
+    )*
+    { return attrs; }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+

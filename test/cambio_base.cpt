@@ -1,0 +1,46 @@
+------------------------------------------------------------------------
+-- cambio_base.cpt
+--------------------------------------------------------------------------
+-- Ejemplo de cambio de bases numéricas
+------------------------------------------------------------------------
+proc main is
+    var num, base: int;
+    var enb: int;
+------------------------------------------------------------------------
+    func b_dec(in n, b: int) -> int is
+        var uc, valRec: int;
+
+        when (n == 0) do
+            return 0;
+        else
+            uc = n mod 10;
+            valRec = b_dec(n / 10, b);
+            return valRec * b + uc;
+        done
+    done
+------------------------------------------------------------------------
+    func dec_b(in n, b: int) -> int is
+        var resto, valRec: int;
+
+        when (n < b) do
+            return n;
+        else
+            resto = n mod b;
+            valRec = dec_b(n / b, b);
+            return valRec * 10 + resto;
+        done
+    done
+------------------------------------------------------------------------
+    num = 4;
+    base = 2;
+
+    print("Este programa convierte n=", num, " a base b=", base);
+    println(", y luego efectúa la conversión inversa.");
+
+    println("n: ", num);
+    println("b: ", base);
+
+    enb = dec_b(num, base);
+    println("dec_b(", num, ",", base, "): ", enb); 
+    println("b_dec(", enb, ",", base, "): ", b_dec(enb, base));
+done

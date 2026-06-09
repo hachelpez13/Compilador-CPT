@@ -1,0 +1,19 @@
+var x: int;
+var b: bool;
+var c: char;
+var array arr1 of int size 5;
+var array arr2 of int size 5;
+
+proc main is
+    -- Asignaciones correctas
+    x = 10;
+    b = true;
+    c = 'z';
+    arr1[0] = 5;
+
+    -- Errores de tipo (deben ser capturados)
+    x = true;       -- ERROR: bool a int
+    b = 'a';        -- ERROR: char a bool
+    arr1 = arr2;    -- ERROR: asignación de array completo
+    x[2] = 10;      -- ERROR: indexar un escalar
+done

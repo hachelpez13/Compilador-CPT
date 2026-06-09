@@ -1,0 +1,17 @@
+var a, b: int;
+var res: bool;
+
+proc main is
+    a = 10;
+    b = 5;
+    
+    -- Operaciones válidas
+    print("10 / 2 / 5 = ", 10 / 2 / 5); -- Debe ser 25 (10 / (2 / 5)), asociativo por derecha
+    println();
+    res = (a > b) and true;
+    
+    -- Errores de tipo a capturar
+    a = 10 + true;
+    res = 'c' > 5;
+    res = not 10;
+done

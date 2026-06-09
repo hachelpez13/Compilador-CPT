@@ -1,0 +1,81 @@
+--------------------------------------------------------------------------
+-- juego_de_la_vida.cpt
+--------------------------------------------------------------------------
+proc main is
+--------------------------------------------------------------------------
+    var array colonia of bool size 80;
+    var i, iteraciones, elementos: int;
+--------------------------------------------------------------------------
+    proc inicializar(out colonia: array of bool size 80) is
+        var i: int;
+        i = 0;
+        loop while (i < elementos) do
+            colonia[i] = (i mod 20) == 0;
+            i = i + 1;
+        done
+    done
+--------------------------------------------------------------------------
+    proc asignar(out colonia: array of bool size 80,
+                 in siguiente: array of bool size 80) is
+        var i: int;
+        i = 0;
+        loop while (i < elementos) do
+            colonia[i] = siguiente[i];
+            i = i + 1;
+        done
+    done
+--------------------------------------------------------------------------
+    func vivira(in colonia: array of bool size 80,
+                in i: int) -> bool is
+        when (i == 0) do
+            return false;
+        elsewhen (i == elementos - 1) do
+            return false;
+        else
+            return ( not colonia[i] and
+                    ((colonia[i - 1] and not colonia[i + 1]) or
+                     (not colonia[i - 1] and colonia[i + 1])) );
+        done
+    done
+--------------------------------------------------------------------------
+    proc siguientegeneracion(out colonia: array of bool size 80) is
+        var i: int;
+        var array siguiente of bool size 80;
+
+        i = 0;
+        loop while (i < elementos) do
+            siguiente[i] = vivira(colonia, i);
+            i = i + 1;
+        done
+        asignar(colonia, siguiente);
+    done
+--------------------------------------------------------------------------
+    proc mostrarcolonia(in colonia: array of bool size 80) is
+        var i: int;
+        i = 0;
+        loop while (i < elementos) do
+            when colonia[i] do
+                print('*');
+            else
+                print(' ');
+            done
+            i = i + 1;
+        done
+        println();
+    done
+--------------------------------------------------------------------------
+    println("Implementación de la versión 1D del Juego de la Vida de Conway.");
+    println("https://en.wikipedia.org/wiki/Conwaymod27s_Game_of_Life");
+
+    elementos = 80;
+    inicializar(colonia);
+    mostrarcolonia(colonia);
+
+    i = 0;
+    iteraciones = 50;
+    loop while (i <= iteraciones) do
+        siguientegeneracion(colonia);
+        mostrarcolonia(colonia);
+        i = i + 1;
+    done
+done

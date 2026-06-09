@@ -1,0 +1,33 @@
+--------------------------------------------------------------------------
+-- torres_hanoi.cpt
+-- algoritmo recurso para resolver las torres de hanoi
+-- https://en.wikipedia.org/wiki/Tower_of_Hanoi#Recursive_solution
+--------------------------------------------------------------------------
+proc main is
+    var steps, n: int;
+------------------------------------------------------   
+    proc hanoi(in n: int, in source,target,spare: char) is
+        when (n == 1) do 
+            println("Mueve disco de la torre ", source," a la torre ", target, ".");
+            steps = steps + 1;
+        else
+            hanoi(n - 1,source,spare,target);
+            hanoi(1,source,target,spare);
+            hanoi(n - 1,spare,target,source);
+        done
+    done
+------------------------------------------------------
+    println("Algoritmo recursivo para resolver el problema de las Torres de Hanoi.");
+    println("https://en.wikipedia.org/wiki/Tower_of_Hanoi#Recursive_solution");
+
+    steps = 0;
+    n = 3;
+
+    println("Resolviendo para ", n," discos.");
+    println();
+
+    hanoi(n,'A','C','B');
+
+    println();
+    println("Terminado en ", steps," etapas.");
+done

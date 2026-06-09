@@ -1,0 +1,102 @@
+--------------------------------------------------------------------------
+-- qsort.cpt
+--------------------------------------------------------------------------
+proc main is
+--------------------------------------------------------------------------
+    var n, iteraciones: int;
+    var array t of int size 20;
+--------------------------------------------------------------------------
+    proc inicializar(out t: array of int size 20) is
+        var i: int;
+        i = 0;
+        loop while (i < n) do
+            t[i] = n - i;
+            i = i + 1;
+        done
+    done
+--------------------------------------------------------------------------
+    proc mostrar(in t: array of int size 20) is
+        var i: int;
+        i = 0;
+        loop while (i < n) do
+            print(t[i], " ");
+            i = i + 1;
+        done
+        print(int2char(13), int2char(10));
+    done
+--------------------------------------------------------------------------
+    proc quicksort(inout t: array of int size 20, in izq, der: int) is
+        var me: int;
+--------------------------------------------------------------------------
+        proc intercambiar(out i,j: int) is
+            var k: int;
+            k = i;
+            i = j;
+            j = k;
+        done
+--------------------------------------------------------------------------
+        proc ordenar(out i: int, out j: int) is
+            when (i > j) do
+                intercambiar(i, j);
+            done
+        done
+--------------------------------------------------------------------------
+        proc divide(out t: array of int size 20,
+                    in izq, der: int,
+                    out me: int) is
+            var p, k: int;
+
+            p = t[izq];
+            k = izq;
+            me = der + 1;
+
+            k = k + 1;
+            loop while ((t[k] <= p) and (k < der)) do
+                k = k + 1;
+            done
+
+            me = me - 1;
+            loop while (t[me] > p) do
+                me = me - 1;
+            done
+
+            loop while (k < me) do
+                intercambiar(t[k], t[me]);
+                k = k + 1;
+                loop while (t[k] <= p) do
+                    k = k + 1;
+                done
+                me = me - 1;
+                loop while (t[me] > p) do
+                    me = me - 1;
+                done
+            done
+
+            intercambiar(t[izq], t[me]);
+        done
+--------------------------------------------------------------------------
+        when (der > izq) do
+            mostrar(t);
+            when ((der - izq) == 1) do
+                ordenar(t[izq], t[der]);
+            else
+                divide(t, izq, der, me);
+                quicksort(t, izq, me - 1);
+                quicksort(t, me + 1, der);
+                iteraciones = iteraciones + 1;
+            done
+        done
+    done
+--------------------------------------------------------------------------
+    println("Ilustración del funcionamiento del algoritmo quicksort para ordenar 20 enteros.");
+    println();
+
+    n = 20;
+    iteraciones = 0;
+
+    inicializar(t);
+    quicksort(t, 0, n - 1);
+
+    println();
+    println("Iteraciones: ", iteraciones);
+done

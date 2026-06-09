@@ -1,0 +1,88 @@
+------------------------------------------------------------------------
+--  criba_eratostenes.cpt
+------------------------------------------------------------------------
+proc main is
+------------------------------------------------------------------------
+    var n: int;
+    var array criba of bool size 101;
+------------------------------------------------------------------------
+        func pedir_entero() -> int is
+            var n: int;
+
+            n = 0;
+            loop while ((n < 1) or (n > 100)) do
+                print("Dame un numero entre 1 y 100: ");
+                read(n);
+            done
+            return n;
+        done
+------------------------------------------------------------------------
+    proc procesar(inout v: array of bool size 101) is
+------------------------------------------------------------------------
+        proc escrib_vect(in v: array of bool size 101) is
+            var m, i: int;
+            var salir: bool;
+
+            i = 2;
+            m = 0;
+            salir = false;
+
+            println();
+            println("Numeros primos hasta ", n, ": ");
+            println();
+
+            loop while (not salir) do
+                when (i > n) do
+                    salir = true;
+                else
+                    when (v[i]) do
+                        println(i, " es primo.");
+                        m = m + 1;
+                    done
+                    i = i + 1;
+                done
+            done
+
+            println();
+            println("Hasta ", n, " hay ", m, " números primos.");
+        done
+------------------------------------------------------------------------
+        proc inicializar(inout v: array of bool size 101) is
+            var i: int;
+
+            i = 1;
+            loop while (i <= n) do
+                v[i] = true;
+                i = i + 1;
+            done
+        done
+------------------------------------------------------------------------
+        proc eliminar_no_primos(inout v: array of bool size 101) is
+            var i, j: int;
+
+            i = 2;
+            loop while (i <= n / 2) do
+                when (v[i]) do
+                    j = 2 * i;
+                    loop while (j <= n) do
+                        v[j] = false;
+                        j = j + i;
+                    done
+                done
+                i = i + 1;
+            done
+        done
+------------------------------------------------------------------------
+        inicializar(v);
+        eliminar_no_primos(v);
+        escrib_vect(v);
+    done
+------------------------------------------------------------------------
+    println("Criba de Eratóstenes: primos hasta un n dado");
+
+    -- println("https://es.wikipedia.org/wiki/Criba_de_Erat%C3%B3stenes");
+    println();
+    
+    n = pedir_entero();
+    procesar(criba);
+done

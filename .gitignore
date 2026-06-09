@@ -1,0 +1,16 @@
+# 1. Archivos generados por Java/Compilación
+*.class
+*.jar
+/esqueleto_proyecto/build/
+/esqueleto_proyecto/dist/
+/esqueleto_proyecto/jcc_files/
+
+# 2. Archivos temporales de la P-Máquina 
+*.pcode
+*.x
+
+# 3. Carpetas de sistema o editores
+.DS_Store
+.vscode/
+.idea/
+*.log

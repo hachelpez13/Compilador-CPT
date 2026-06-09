@@ -1,0 +1,11 @@
+proc main is
+    var x: int;
+
+    proc duplicar(inout n: int) is
+        n = n * 2;
+    done
+
+    x = 10;
+    duplicar(x);
+    println("Valor de x (debe ser 20): ", x);
+done

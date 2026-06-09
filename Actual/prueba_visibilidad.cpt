@@ -1,0 +1,11 @@
+proc main is
+    var global: int;
+
+    proc nivel_interno is
+        -- Debe acceder a 'global' que está 1 nivel arriba (f = 1)
+        println("Acceso a variable superior (debe ser 100): ", global);
+    done
+
+    global = 100;
+    nivel_interno();
+done

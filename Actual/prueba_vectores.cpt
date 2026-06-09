@@ -1,0 +1,7 @@
+proc main is
+    var array vector of int size 5;
+    vector[0] = 10;
+    vector[1] = 20;
+    vector[2] = vector[0] + vector[1];
+    println("El resultado de 10+20 es: ", vector[2]);
+done

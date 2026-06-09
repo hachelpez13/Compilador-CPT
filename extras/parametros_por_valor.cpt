@@ -1,0 +1,7 @@
+proc main is
+    proc imprimir_suma(in a, b: int) is
+        println("Suma (debe ser 30): ", a + b);
+    done
+
+    imprimir_suma(10, 20);
+done

@@ -1,0 +1,10 @@
+proc main is
+    var x, y: int;
+    
+    proc local is
+        var z: bool;
+        z = true;
+    done
+
+    x = 1;
+done

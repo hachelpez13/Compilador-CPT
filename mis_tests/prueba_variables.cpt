@@ -1,0 +1,6 @@
+proc main is
+    var a, b: int;
+    var flag: bool;
+    var array vector of char size 5;
+    var c: char;
+done

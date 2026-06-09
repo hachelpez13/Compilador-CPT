@@ -1,0 +1,13 @@
+proc main is
+    var a, b, c: int;
+    var es_mayor: bool;
+    
+    a = 10;
+    b = 5 * 2 + 3;
+    c = a + b;
+    
+    es_mayor = c > 20;
+    
+    println("Valor de C: ", c);
+    println("Es mayor que 20? ", es_mayor);
+done

@@ -1,0 +1,196 @@
+--------------------------------------------------------------------------
+-- reinas_ajedrez.cpt
+--------------------------------------------------------------------------
+proc main is
+--------------------------------------------------------------------------
+    var tamano_tablero, nreinas, fila, columna, f, c: int;
+    var array tablero of int size 1000;    
+    var array reinas of int size 1000;     
+--------------------------------------------------------------------------
+    func min(in x, y: int) -> int is
+        when (x > y) do
+            return y;
+        else
+            return x;
+        done
+    done
+--------------------------------------------------------------------------
+    func max(in x, y: int) -> int is
+        when (x > y) do
+            return x;
+        else
+            return y;
+        done
+    done
+--------------------------------------------------------------------------
+    func sitio(in fila, columna: int) -> int is
+        return ((fila - 1) * tamano_tablero) + columna - 1;
+    done
+--------------------------------------------------------------------------
+    func componente(out tablero: array of int size 1000,
+                    in fila, columna: int) -> int is
+        return tablero[sitio(fila, columna)];
+    done
+--------------------------------------------------------------------------
+    func ocupada(out tablero: array of int size 1000,
+                 in fila, columna: int) -> bool is
+        return tablero[sitio(fila, columna)] > 0;
+    done
+--------------------------------------------------------------------------
+    proc asignar_componente(out tablero: array of int size 1000,  in fila,
+            columna, valor: int) is
+        tablero[sitio(fila, columna)] = valor;
+    done
+--------------------------------------------------------------------------
+    proc marcar_componente(out tablero: array of int size 1000, in fila,
+            columna: int) is
+        tablero[sitio(fila, columna)] = tablero[sitio(fila, columna)] + 1;
+    done
+--------------------------------------------------------------------------
+    proc desmarcar_componente(out tablero: array of int size 1000,
+            in fila, columna: int) is
+        tablero[sitio(fila, columna)] = tablero[sitio(fila, columna)] - 1;
+    done
+--------------------------------------------------------------------------
+    proc colocar_reina(in fila, columna: int) is
+        var f, c: int;
+
+        marcar_componente(reinas, fila, columna);
+
+        f = 1;
+        loop while (f <= tamano_tablero) do
+            marcar_componente(tablero, f, columna);
+            f = f + 1;
+        done
+
+        c = 1;
+        loop while (c <= tamano_tablero) do
+            marcar_componente(tablero, fila, c);
+            c = c + 1;
+        done
+
+        f = fila;
+        c = columna;
+        loop while ((f > 1) and (c > 1)) do
+            f = f - 1;
+            c = c - 1;
+        done
+
+        loop while ((f <= tamano_tablero) and (c <= tamano_tablero)) do
+            marcar_componente(tablero, f, c);
+            f = f + 1;
+            c = c + 1;
+        done
+
+        f = fila;
+        c = columna;
+        loop while ((f > 1) and (c < tamano_tablero)) do
+            f = f - 1;
+            c = c + 1;
+        done
+
+        loop while ((f <= tamano_tablero) and (c >= 1)) do
+            marcar_componente(tablero, f, c);
+            f = f + 1;
+            c = c - 1;
+        done
+    done
+--------------------------------------------------------------------------
+    proc iniciar_tablero is
+        var f, c: int;
+
+        f = 1;
+        loop while (f <= tamano_tablero) do
+            c = 1;
+            loop while (c <= tamano_tablero) do
+                asignar_componente(tablero, f, c, 0);
+                asignar_componente(reinas, f, c, 0);
+                c = c + 1;
+            done
+            f = f + 1;
+        done
+    done
+--------------------------------------------------------------------------
+    proc mostrar_tablero(in array_a_mostrar: array of int size 1000) is
+        var f, c: int;
+
+        println("Esta es una solución para n: ", tamano_tablero);
+
+        f = 1;
+        loop while (f <= tamano_tablero) do
+            c = 1;
+            loop while (c <= tamano_tablero) do
+                when (componente(array_a_mostrar, f, c) > 0) do
+                    print(" o");
+                else
+                    print(" .");
+                done
+                c = c + 1;
+            done
+            println();
+            f = f + 1;
+        done
+    done
+--------------------------------------------------------------------------
+    func libre(out fila, columna: int) -> bool is
+        var endal: bool;
+
+        fila = 1;
+        columna = 1;
+        endal = false;
+
+        loop while ( not endal) do
+            when (fila > tamano_tablero) do
+                endal = true;
+            elsewhen (columna > tamano_tablero) do
+                columna = 1;
+                fila = fila + 1;
+            elsewhen (ocupada(tablero, fila, columna)) do
+                columna = columna + 1;
+            else
+                endal = true;
+            done
+        done
+
+        return fila <= tamano_tablero;
+    done
+--------------------------------------------------------------------------
+    tamano_tablero = 4;
+
+    println("Este programa intenta colocar ", tamano_tablero,
+          " reinas en un tablero de ajedrez de ",
+          tamano_tablero, '*', tamano_tablero,
+          " sin que se ataquen.");
+
+    loop while (tamano_tablero <= 10) do
+        fila = 1;
+        nreinas = 0;
+        println("Probando con n: ", tamano_tablero);
+    
+
+        loop while ((fila <= tamano_tablero) and (nreinas < tamano_tablero)) do
+            columna = 1;
+            loop while ((columna <= tamano_tablero) and (nreinas < tamano_tablero)) do
+                nreinas = 1;
+                iniciar_tablero();
+                colocar_reina(fila, columna);
+
+                loop while ((nreinas < tamano_tablero) and libre(f, c)) do
+                    colocar_reina(f, c);
+                    nreinas = nreinas + 1;
+                done
+
+                when (nreinas == tamano_tablero) do
+                    mostrar_tablero(reinas);
+                done
+
+                columna = columna + 1;
+            done
+            fila = fila + 1;
+        done
+
+        tamano_tablero = tamano_tablero + 1;
+    done
+
+    println();
+done

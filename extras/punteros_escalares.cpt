@@ -1,0 +1,10 @@
+proc main is
+    var x: int;
+    proc poner_99(out n: int) is
+        n = 99;
+    done
+
+    x = 0;
+    poner_99(x);
+    println("Valor de x (debe ser 99): ", x);
+done

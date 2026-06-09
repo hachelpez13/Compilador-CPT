@@ -1,0 +1,9 @@
+proc main is
+    proc saludar is
+        println("Hola desde el procedimiento!");
+    done
+
+    println("Llamando al procedimiento...");
+    saludar();
+    println("De vuelta en el main!");
+done

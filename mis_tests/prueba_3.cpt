@@ -1,0 +1,23 @@
+-- Test de restricciones de posición de declaraciones
+proc main is
+    var i: int;
+    var array ejemplo of int size -10;                    -- ERROR SINTACTICO: Array negativo (Requisito 8) 
+    i = 10;
+
+    -- ERROR SINTÁCTICO: Variable declarada después de una instrucción (Requisito 14)
+    --var j: int; 
+
+    loop while (i > 0) do
+        -- ERROR SINTÁCTICO: No se permiten variables dentro de bucles (Requisito 14)
+        --var error_aqui: bool; 
+        
+        when (i == 5) do
+            -- ERROR SINTÁCTICO: No se permiten variables dentro de when (Requisito 14)
+            --var error_tambien: char; 
+            print("*");
+        else
+            null;
+        done
+        i = i - 1;
+    done
+done

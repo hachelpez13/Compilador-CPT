@@ -1,0 +1,73 @@
+-- Programa de prueba 1: E/S y Gestión de Parámetros
+
+proc main is
+
+    -- Declaraciones globales al inicio (Requisito 2 y 8)
+
+    var caracter_comilla: char;
+    var n, resultado_escalar: int;
+    var array datos of int size 10; 
+    var array procesados of int size 10;
+
+
+    proc inicializar_comilla is                             -- Procedimiento sin parametros ni corchetes (Requisto )
+        caracter_comilla = ''';                             -- Carácter comilla simple (Requisito 7)
+    done
+
+    -- Función con parámetros 'in' y retorno escalar (Requisito 17)
+
+    func calcular_cuadrado(in valor: int) -> int is 
+        return valor * valor; 
+    done
+
+
+    -- Procedimiento con parámetros 'out' para modificar arrays (Requisito 16)
+
+    proc inicializar_vector(in factor: int, out v_out: array of int size 10) is 
+        var i: int; 
+        i = 0;
+        loop while (i < 10) do
+            v_out[i] = v_out[i] + (i * factor);
+            i = i + 1;
+        done
+    done
+
+    -- Procedimiento de Entrada/Salida y terminación (Requisito 22)
+
+    proc gestion_usuario(out valor: int) is
+
+        println("--- SISTEMA DE PRUEBA CPT ---"); 
+        print("Introduzca un numero positivo: "); 
+
+        read(valor); 
+        readln();                                           -- Salta hasta el final de la línea (Requisito 20)
+
+        when (valor <= 0) do 
+            println("Error critico: Valor no permitido.");
+            exit;                                           -- Finaliza la ejecucion (Requisito 22) 
+        elsewhen (valor > 1000) do
+            println(" ¿Hacia falta tanto?");
+        elsewhen (valor > 100000) do
+            println("Creo que te has venido arriba.");
+        else
+            null;                                           -- No hace nada (Requisito 11)
+        done
+    done
+
+    -- Cuerpo del programa principal
+    gestion_usuario(n);
+    
+    -- Invocaciones y expresiones complejas
+    inicializar_vector(n, datos);
+    resultado_escalar = calcular_cuadrado(datos[0]);
+
+    print("El cuadrado del quinto elemento es: """, resultado_escalar, """");         -- Prueba comillas en string (Requisito 21) 
+
+    println();                                                                  -- Prueba de println vacío (Requisito 19)
+
+    inicializar_comilla();                                                      -- Inicializacion de un procedimiento sin parámetros (Requisito 15)
+
+    print(int2char(10));                                                        -- Otro salto de línea (Requisito 21)                          
+                                                                                
+
+done

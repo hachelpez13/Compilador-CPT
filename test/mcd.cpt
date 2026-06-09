@@ -1,0 +1,40 @@
+--------------------------------------------------------------------------
+-- calcular_mcd.cpt
+--------------------------------------------------------------------------
+proc main is
+--------------------------------------------------------------------------
+    var i, j: int;
+--------------------------------------------------------------------------
+    proc dato(out d: int) is
+        d = 0;
+        loop while (d <= 0) do
+            print("Escribe un numero (>0): ");
+            read(d);
+            when (d <= 0) do
+                println("El numero debe ser > 0.");
+            done
+        done
+    done
+--------------------------------------------------------------------------
+    func mcd(in a, b: int) -> int is
+        var i, j, k: int;
+
+        j = a;
+        k = b;
+        i = a mod b;
+        loop while (i <> 0) do
+            j = k;
+            k = i;
+            i = j mod k;
+        done
+        return k;
+    done
+--------------------------------------------------------------------------
+    println("Este programa pide dos números positivos y calcula su máximo común divisor.");
+
+    dato(i);
+    dato(j);
+    println();
+
+    println("mcd(", i, ", ", j, ") = ", mcd(i, j));
+done

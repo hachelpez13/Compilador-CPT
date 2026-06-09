@@ -1,0 +1,27 @@
+------------------------------------------------------------------------
+-- factorial.cpt
+-- Ejemplo de función recursiva
+------------------------------------------------------------------------
+proc main is
+------------------------------------------------------------------------
+    var n: int;
+------------------------------------------------------------------------
+    func fact(in m: int) -> int is
+        when (m == 1) do
+            return 1;
+        else
+            return m * fact(m - 1);
+        done
+    done
+------------------------------------------------------------------------
+    println("Calcula k! para k=1..20.");
+    print("Habrá MATH overflow en 13! porque los enteros ");
+    println("en la máquina P son de 4 bytes.");
+    println();
+
+    n = 1;
+    loop while (n <= 20) do
+        println(n, "! = ", fact(n));
+        n = n + 1;
+    done
+done

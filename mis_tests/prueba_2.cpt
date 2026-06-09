@@ -1,0 +1,30 @@
+-- Programa de prueba 2: Estrés de operadores y prioridades
+
+proc main is
+    VAR A, B, C: INT;       -- Prueba lenguaje case-insensitive (Requisito 4)
+    VAR RES: BOOL;
+
+    a = 10; b = 5; c = 20;
+
+
+    -- Expresión que mezcla aritmética, comparaciones y lógica
+    -- Prioridad esperada: ( ) > not > *,/,mod > +,- > >,==.. > and > or
+
+    res = (a + b * 2 > c) and not (a / 2 == b) or (c mod a <> 5);
+
+
+    when (res) do
+        println("La expresion logica es verdadera");
+    else
+        println("La expresion logica es falsa");
+    done
+
+    -- Prueba de asociatividad de la división (derecha) y otros (izquierda) (Requisito 25)
+
+    a = 100 / 10 / 2; 
+    println("Resultado division (100 / (10 / 2)) = ", a);
+    
+    b = 10 - 5 - 2; 
+    println("Resultado resta ((10 - 5) - 2) = ", b);
+    
+done

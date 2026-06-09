@@ -1,0 +1,56 @@
+------------------------------------------------------------------------
+--  fibonacci.cpt
+------------------------------------------------------------------------
+proc main is
+------------------------------------------------------------------------
+    var i, n, r: int;
+------------------------------------------------------------------------
+    proc dato(inout dato: int) is
+        var correcto: bool;
+
+        dato = 0;
+        correcto = false;
+
+        loop while (not correcto) do
+            print("Escribe un numero positivo: ");
+            read(dato);
+            correcto = dato > 0;
+            when (not correcto) do
+                println("El número debe ser positivo.");
+            done
+        done
+    done
+------------------------------------------------------------------------
+    proc fib(in n: int, inout r: int) is
+        var r1, r2: int;
+
+        r1 = 0;
+        r2 = 0;
+        when (n > 1) do
+            fib(n - 1, r1);
+            fib(n - 2, r2);
+            r = r1 + r2;
+        else
+            r = n;
+        done
+    done
+------------------------------------------------------------------------
+    print("Este programa pide un número positivo n y calcula fib(n) ");
+    println("con la fórmula recursiva fib(n) = fib(n-1) + fib(n-2)");
+    println("A partir de 30 será muy lento por la recursividad.");
+    println();
+
+    dato(n);
+    println(n);
+
+    i = 1;
+    r = 0;
+
+    loop while (i <= n) do
+        fib(i, r);
+        println("fib(", i, ") = ", r);
+        i = i + 1;
+    done
+
+    println();
+done

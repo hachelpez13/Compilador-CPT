@@ -1,0 +1,8 @@
+proc main is
+    -- Prueba de literales y comentarios
+    print("Hola ""caracola");
+    println();
+    print('a');
+    println();
+    print('''); -- Comilla simple
+done

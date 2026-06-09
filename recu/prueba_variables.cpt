@@ -1,0 +1,11 @@
+var x, y: int;
+var c: char;
+var x: bool; -- ERROR INTENCIONADO: 'x' ya está declarada
+
+proc main is
+    var z: int;
+    var array c of int size 10; -- ERROR INTENCIONADO: 'c' ya existe en el ámbito global
+    
+    print("Prueba finalizada");
+    println();
+done

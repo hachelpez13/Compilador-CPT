@@ -1,0 +1,11 @@
+proc main is
+    func factorial(in n: int) -> int is
+        when (n <= 1) do
+            return 1;
+        else
+            return n * factorial(n - 1);
+        done
+    done
+
+    println("Factorial de 5 (debe ser 120): ", factorial(5));
+done

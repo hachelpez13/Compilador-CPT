@@ -1,0 +1,85 @@
+--------------------------------------------------------------------------
+-- invertir_pgm.cpt
+--------------------------------------------------------------------------
+proc main is
+--------------------------------------------------------------------------
+    var formato: int;
+    var fils, cols: int;
+    var max_gris: int;
+    var array image of char size 500000;
+--------------------------------------------------------------------------
+    func indice(in fils, cols, i, j: int) -> int is
+        return i * cols + j;
+    done
+--------------------------------------------------------------------------
+    func cargar_imagen(out formato, fils, cols, prof: int,
+                       out imagen: array of char size 500000) -> bool is
+        var c: char;
+        var i, j: int;
+
+        read(c);
+        read(formato);
+        read(fils);
+        read(cols);
+        read(max_gris);
+        readln();  
+
+        when (fils * cols > 500000) do
+            println("Imagen de dimensiones (", fils, ", ", cols,
+                  ") demasiado grande (max 500000 pixels)!");
+            return false;
+        else
+            i = 0;
+            loop while (i < fils) do
+                j = 0;
+                loop while (j < cols) do
+                    read(c);
+                    imagen[indice(fils, cols, i, j)] = c;
+                    j = j + 1;
+                done
+                i = i + 1;
+            done
+            return true;
+        done
+    done
+--------------------------------------------------------------------------
+    proc guardar_imagen(in formato, fils, cols, prof: int,
+                        in imagen: array of char size 500000) is
+        var i, j: int;
+
+        println('P', formato);
+        println(fils, ' ', cols); 
+        println(prof); 
+
+        i = 0;
+        loop while (i < fils) do
+            j = 0;
+            loop while (j < cols) do
+                print(imagen[indice(fils, cols, i, j)]);
+                j = j + 1;
+            done
+            i = i + 1;
+        done
+    done
+--------------------------------------------------------------------------
+    proc invertir_imagen(in formato, fils, cols, prof: int,out imagen: array of char size 500000) is
+        var i, j, idx: int;
+
+        i = 0;
+        loop while (i < fils) do
+            j = 0;
+            loop while (j < cols) do
+                idx = indice(fils, cols, i, j);
+                imagen[idx] =
+                    int2char(max_gris - char2int(imagen[idx]));
+                j = j + 1;
+            done
+            i = i + 1;
+        done
+    done
+--------------------------------------------------------------------------
+    when cargar_imagen(formato, fils, cols, max_gris, image) do
+        invertir_imagen(formato, fils, cols, max_gris, image);
+        guardar_imagen(formato, fils, cols, max_gris, image);
+    done
+done

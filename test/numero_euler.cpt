@@ -1,0 +1,104 @@
+--------------------------------------------------------------------------
+-- numero_euler.cpt
+--------------------------------------------------------------------------
+-- e aproximado con una serie infinita
+--------------------------------------------------------------------------
+proc main is
+--------------------------------------------------------------------------
+    var array  e, sumando, resultado of int size 101;
+    var n, ndigitos, nterminos: int;
+--------------------------------------------------------------------------
+    proc iniciar(out s: array of int size 101) is
+        var i: int;
+        i = 0;
+        loop while (i <= ndigitos) do
+            s[i] = 0;
+            i = i + 1;
+        done
+    done
+--------------------------------------------------------------------------
+    proc mostrar_numero(in s: array of int size 101) is
+        var i: int;
+
+        print(s[0], '.');
+        i = 1;
+        loop while (i <= ndigitos) do
+            when (((i - 1) mod 5) == 0) do
+                print(" ");
+            done
+            print(s[i]);
+            i = i + 1;
+        done
+        println();
+    done
+--------------------------------------------------------------------------
+    proc sumar(inout s,r: array of int size 101) is
+        var i, n: int;
+
+        i = ndigitos;
+        loop while (i >= 0) do
+            n = s[i] + r[i];
+            when (n > 9) do
+                s[i] = n mod 10;
+                s[i - 1] = s[i - 1] + (n / 10);
+            else
+                s[i] = n;
+            done
+            i = i - 1;
+        done
+    done
+--------------------------------------------------------------------------
+    proc dividir(inout s: array of int size 101,
+                 out r: array of int size 101,
+                 in n: int) is
+        var i: int;
+
+        i = 0;
+        loop while (i <= ndigitos) do
+            when ((s[i] / n) > 0) do
+                r[i] = s[i] / n;
+                s[i + 1] = ((s[i] mod n) * 10) + s[i + 1];
+            else
+                r[i] = 0;
+                s[i + 1] = (s[i] * 10) + s[i + 1];
+            done
+            i = i + 1;
+        done
+    done
+--------------------------------------------------------------------------
+    proc asignar(inout s: array of int size 101, out r: array of int size 101) is
+        var i: int;
+
+        i = 0;
+        loop while (i <= ndigitos) do
+            s[i] = r[i];
+            i = i + 1;
+        done
+    done
+--------------------------------------------------------------------------
+    ndigitos = 60;
+    nterminos = 50;
+
+    print("Aproximación del número de Euler e utilizando la serie infinita ");
+    println("e = 1/0! + 1/1! + 1/2! + 1/3! ...");
+    println();
+
+    iniciar(sumando);
+    iniciar(e);
+
+    sumando[0] = 1;
+    e[0] = 2;
+
+    n = 1;
+    loop while (n < nterminos) do
+        dividir(sumando, resultado, n);
+        sumar(e, resultado);
+        print("e con ", n, " términos de la serie: ");
+        n = n + 1;
+        mostrar_numero(e);
+        asignar(sumando, resultado);
+    done
+
+    println();
+    println("La convergencia es rápida porque los términos de la suma son 1/k!");
+done

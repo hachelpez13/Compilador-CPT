@@ -1,0 +1,136 @@
+--------------------------------------------------------------------------
+-- numero_pi_leibnitz.cpt
+--------------------------------------------------------------------------
+-- Aproximación del número Pi mediante la serie de Leibniz
+--------------------------------------------------------------------------
+proc main is
+--------------------------------------------------------------------------
+    var n, limite_n, digitos: int;
+    var array pi, sumanloop, resultaloop of int size 101;
+    var sumo: bool;
+--------------------------------------------------------------------------
+    proc iniciar(out s: array of int size 101) is
+        var i: int;
+        i = 0;
+        loop while (i <= digitos) do
+            s[i] = 0;
+            i = i + 1;
+        done
+    done
+--------------------------------------------------------------------------
+    proc mostrar_numero(in s: array of int size 101) is
+        var i: int;
+
+        print(s[0], '.');
+        i = 1;
+        loop while (i <= digitos) do
+            when (((i - 1) mod 5) == 0) do
+                print(" ");
+            done
+            print(s[i]);
+            i = i + 1;
+        done
+        println();
+    done
+--------------------------------------------------------------------------
+    proc sumar(out s: array of int size 101,
+               in r: array of int size 101) is
+        var i, n: int;
+
+        i = digitos;
+        loop while (i >= 0) do
+            n = s[i] + r[i];
+            when (n > 9) do
+                s[i] = n mod 10;
+                when (i > 0) do
+                    s[i - 1] = s[i - 1] + (n / 10);
+                done
+            else
+                s[i] = n;
+            done
+            i = i - 1;
+        done
+    done
+--------------------------------------------------------------------------
+    proc restar(out s: array of int size 101,
+                in r: array of int size 101) is
+        var i, n: int;
+        var llevo_uno: bool;
+
+        i = digitos;
+        llevo_uno = false;
+
+        loop while (i >= 0) do
+            when (llevo_uno) do
+                n = (s[i] - 1) - r[i];
+            else
+                n = s[i] - r[i];
+            done
+
+            when (n < 0) do
+                s[i] = n + 10;
+                llevo_uno = true;
+            else
+                s[i] = n;
+                llevo_uno = false;
+            done
+            i = i - 1;
+        done
+    done
+--------------------------------------------------------------------------
+    proc dividir(in s: array of int size 101,
+                 out r: array of int size 101,
+                 in n: int) is
+        var i, val, acc: int;
+
+        i = 0;
+        acc = 0;
+        loop while (i <= digitos) do
+            val = s[i] + acc;
+            when ((val / n) > 0) do
+                r[i] = val / n;
+                acc = ((val mod n) * 10);
+            else
+                r[i] = 0;
+                acc = (val * 10);
+            done
+            i = i + 1;
+        done
+    done
+--------------------------------------------------------------------------
+    println("Aproximación del número Pi utilizando la serie infinita ");
+    print("Pi = 4 - 4/3 + 4/5 - 4/7 + 4/9 ...");
+    println();
+
+    digitos = 60;
+    limite_n = 100;
+
+    iniciar(sumanloop);
+    iniciar(pi);
+
+    sumanloop[0] = 4;
+    pi[0] = 4;
+
+    n = 3;
+    sumo = false;
+
+    loop while (n < limite_n) do
+        dividir(sumanloop, resultaloop, n);
+
+        when (sumo) do
+            sumar(pi, resultaloop);
+        else
+            restar(pi, resultaloop);
+        done
+
+        sumo = not sumo;
+        print("Pi con ", (n - 1) / 2, " términos de la serie: ");
+        mostrar_numero(pi);
+
+        n = n + 2;
+    done
+
+    println();
+    print("La convergencia es lenta porque los términos de la suma ");
+    println("son proporcionales a 1/k");
+done
