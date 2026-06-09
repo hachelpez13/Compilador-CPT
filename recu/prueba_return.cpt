@@ -1,0 +1,27 @@
+proc main is
+    var x: int;
+
+    -- Función correcta: siempre devuelve algo
+    func absoluto(in n: int) -> int is
+        when (n < 0) do
+            return -n;
+        else
+            return n;
+        done
+    done
+
+    -- Función con WARNING: Falta el else
+    func dudosa(in n: int) -> int is
+        when (n > 10) do
+            return 100;
+        done
+        -- Si n <= 10, llega aqui sin return!
+    done
+
+    -- Función con WARNING: No hay return en absoluto
+    func vacia() -> int is
+        x = 5;
+    done
+
+    println("Compilado ok.");
+done

@@ -1,0 +1,11 @@
+proc main is
+    var x, y: int;
+    var b: bool;
+
+    -- Intentamos imprimir una variable booleana sin inicializar
+    println("El valor de b es: ", b);
+
+    -- Intentamos usar una variable entera sin inicializar en una expresion
+    y = x + 5;
+    println("El valor de y es: ", y);
+done

@@ -403,6 +403,10 @@ void Programa(String filename):
 {
     Attributes progBodyAttrs = new Attributes();
     int offsetGlobales = 3; // Variable para recordar cuánto ocupan las globales
+
+    // Recolector de inits globales
+    CodeBlock initGlobalsCode = new CodeBlock();
+    Attributes declAttrs;
 }
 {   
     // 1. Declaración de variables globales 
@@ -458,6 +462,9 @@ void Programa(String filename):
                 finalCode.addLabel(labelBoot);
                 finalCode.addInst(OpCode.NOP);
                 
+                // Ejecutar inicialización global antes de llamar a main
+                finalCode.addBlock(initGlobalsCode);
+
                 // Crea el marco en memoria para main y salta a él
                 // S = offsetGlobales (protegemos las globales), L = 0 (diferencia de nivel), A = labelMain
                 finalCode.addOSFInst(offsetGlobales, 0, labelMain);
@@ -489,10 +496,17 @@ Attributes program_body():
     Attributes subprogramsAttrs = new Attributes();
     String labelInicioInstrucciones = generarEtiqueta();
     boolean haySubprogramas = false;
+
+    // Recolector locales
+    Attributes declAttrs;
+    CodeBlock initCode = new CodeBlock();
 }
 {   
     // 1. Declaración de variables locales
-	( variable_array_declaration() )*
+    ( 
+        declAttrs = variable_array_declaration() 
+        { initCode.addBlock(declAttrs.code); }
+    )*
 
 
     // 2. Declaración de Subprogramas (Se guardan en un bloque de código separado temporalmente)
@@ -517,6 +531,9 @@ Attributes program_body():
             bodyAttrs.code.addLabel(labelInicioInstrucciones);
             bodyAttrs.code.addInst(OpCode.NOP);
         }
+
+        // Inyectar inicialización de variables locales
+        bodyAttrs.code.addBlock(initCode);
     }
 
     // 3. Ejecución de Instrucciones
@@ -525,14 +542,20 @@ Attributes program_body():
         { 
             // Añadimos el código de cada instrucción al cuerpo
             bodyAttrs.code.addBlock(instAttrs.code); 
+
+            // Propagamos el return hacia arriba
+            if (instAttrs.hasReturn) {
+                bodyAttrs.hasReturn = true;
+            }
         } 
     )*
     { return bodyAttrs; }
 }
 
 // Declaración de Variables (Escalares y Arrays)
-void variable_array_declaration():
+Attributes variable_array_declaration():
 {
+    Attributes attrs = new Attributes();
     Token t;
     ArrayList<Token> listaIdentificadores = new ArrayList<Token>();
     Symbol.Types tipo;
@@ -567,6 +590,11 @@ void variable_array_declaration():
                     s.dir = currentOffset++;
 
                     tabla_simbolos.insertSymbol(s);
+
+                    // Inyección del valor centinela (-999999)
+                    attrs.code.addInst(OpCode.SRF, 0, (int)s.dir);
+                    attrs.code.addInst(OpCode.STC, -999999);
+                    attrs.code.addInst(OpCode.ASG);
                 }
                 catch (AlreadyDefinedSymbolException e){
                     System.err.println("ERROR SEMÁNTICO: (" + id.beginLine + ", " + id.beginColumn + "): El símbolo '" + id.image + "' ya existe actualmente.");
@@ -591,10 +619,6 @@ void variable_array_declaration():
                     SymbolArray s = new SymbolArray(id.image.toLowerCase(), tamaño, tipo);
 
                     s.dir = currentOffset;  
-
-                    // AÑADE ESTO PARA DEBUGGEAR:
-                    System.out.println("DEBUG MEMORIA -> Array: " + id.image + " | Dir Base: " + s.dir + " | Tamaño: " + tamaño);
-
                     currentOffset += tamaño;    
 
                     tabla_simbolos.insertSymbol(s);
@@ -606,7 +630,8 @@ void variable_array_declaration():
             }
         }
     )
-    < tSEMI >    
+    < tSEMI > 
+    { return attrs; }  
 }
 
 Symbol.Types tipo_variable():
@@ -770,6 +795,11 @@ void function_declaration(Attributes subprogramsAttrs):
         System.out.println("------------------------------------------------");
         System.out.println(tabla_simbolos.toString());                       
         
+        // Emitimos el Warning si no hay garantía de retorno
+        if (!bodyAttrs.hasReturn) {
+            System.out.println("WARNING: (" + t.beginLine + "," + t.beginColumn + "): La función '" + t.image.toLowerCase() + "' tiene caminos de ejecución que no finalizan en un 'return'.");
+        }
+
         subprogramsAttrs.code.addBlock(bodyAttrs.code);
        
         subprogramsAttrs.code.addInst(OpCode.CSF);               // Retorno de la máquina P
@@ -883,6 +913,9 @@ Attributes instruccion():
             instAttrs.code.addBlock(expAttrs.code);
             
             instAttrs.code.addInst(OpCode.CSF); 
+
+            // Activamos el chivato de retorno
+            instAttrs.hasReturn = true;
         }
 
       | LOOKAHEAD(2) instAttrs = inst_invocacion_p_f()
@@ -1346,8 +1379,15 @@ Attributes inst_seleccion() :
     Attributes instAttrs = new Attributes();
     Attributes expAttrs;
     Attributes bodyAttrs;
-    String labelSiguiente; // Etiqueta para saltar a la siguiente condición si la actual falla
-    String labelFin = generarEtiqueta(); // Etiqueta común para saltar al final del bloque
+    String labelSiguiente;                              // Etiqueta para saltar a la siguiente condición si la actual falla
+    String labelFin = generarEtiqueta();                // Etiqueta común para saltar al final del bloque
+
+    // Variables para analizar la garantía de retorno
+    boolean whenRet = false;
+    boolean allElseWhenRet = true;                      // Por defecto true, si falla un elsewhen se vuelve false
+    boolean elseRet = false;
+    boolean hasElse = false;
+    boolean currentBlockRet = false;
 }
 {
     { labelSiguiente = generarEtiqueta(); }
@@ -1366,9 +1406,13 @@ Attributes inst_seleccion() :
     }
     ( 
         bodyAttrs = instruccion() 
-        { instAttrs.code.addBlock(bodyAttrs.code); }
+        { 
+            instAttrs.code.addBlock(bodyAttrs.code);
+            if (bodyAttrs.hasReturn) currentBlockRet = true; 
+        }
     )+ 
     {
+        whenRet = currentBlockRet;
         // Si ejecutamos el interior con éxito, saltamos ignorando todo lo demás
         instAttrs.code.addInst(OpCode.JMP, labelFin);
         
@@ -1381,8 +1425,8 @@ Attributes inst_seleccion() :
     // --- RAMA ELSEWHEN (Opcionales y múltiples) ---
     // Deben aparecer seguidas después del when
     (
-        { labelSiguiente = generarEtiqueta(); }
         <tELSEWHEN> 
+        { labelSiguiente = generarEtiqueta(); }
         ( LOOKAHEAD(2) < tLPAR > expAttrs = expresion() < tRPAR > | expAttrs = expresion() ) 
         < tDO >
         {
@@ -1392,9 +1436,13 @@ Attributes inst_seleccion() :
 
         ( 
             bodyAttrs = instruccion() 
-            { instAttrs.code.addBlock(bodyAttrs.code); }
+            { 
+                instAttrs.code.addBlock(bodyAttrs.code); 
+                if (bodyAttrs.hasReturn) currentBlockRet = true;
+            }
         )+
-        {
+        {   
+            if (!currentBlockRet) allElseWhenRet = false;
             // Salto al final si se cumple esta rama
             instAttrs.code.addInst(OpCode.JMP, labelFin);
             // Colocamos la etiqueta para la siguiente comprobación
@@ -1405,12 +1453,18 @@ Attributes inst_seleccion() :
 
     // --- RAMA ELSE (Opcional, solo una vez) ---
     // Si aparece, debe ser la última antes del done
-    (
+    (   
+       
         < tELSE >
+        { currentBlockRet = false; hasElse = true; }
         ( 
             bodyAttrs = instruccion() 
-            { instAttrs.code.addBlock(bodyAttrs.code); }
+            { 
+                instAttrs.code.addBlock(bodyAttrs.code); 
+                if (bodyAttrs.hasReturn) currentBlockRet = true;    
+            }
         )+
+        { elseRet = currentBlockRet; }
     )?
 
     // 4. Cierre de la instrucción
@@ -1419,6 +1473,10 @@ Attributes inst_seleccion() :
         // Marca donde desembocan todos los saltos exitosos o los fallos en cadena
         instAttrs.code.addLabel(labelFin);
         instAttrs.code.addInst(OpCode.NOP);
+
+        if (hasElse && whenRet && allElseWhenRet && elseRet) {
+            instAttrs.hasReturn = true;
+        }
         return instAttrs;
     }
 }
@@ -1568,6 +1626,39 @@ Attributes primario() :
                 // 1. Diferencia de niveles para el encadenamiento estático
                 int f = tabla_simbolos.level - sym.nivel;
                 
+
+                // === CHEQUEO DE INICIALIZACIÓN (SOLO ESCALARES) ===
+                if (!(sym instanceof SymbolArray)) {
+                    String labelOk = cpt.generarEtiqueta();
+
+                    // 1. Leemos el valor que tiene actualmente
+                    primAttrs.code.addInst(OpCode.SRF, f, (int)sym.dir);
+                    if (sym.parClass == Symbol.ParameterClass.REF) {
+                        primAttrs.code.addInst(OpCode.DRF);
+                    }
+                    primAttrs.code.addInst(OpCode.DRF);
+
+                    // 2. Comparamos con nuestro centinela
+                    primAttrs.code.addInst(OpCode.STC, -999999);
+                    primAttrs.code.addInst(OpCode.EQ);
+                    primAttrs.code.addInst(OpCode.JMF, labelOk);
+
+                    // 3. RAMA ERROR: Imprimir y abortar
+                    String msgError = "ERROR DINAMICO: Variable '" + t.image.toLowerCase() + "' usada sin inicializar.";
+                    for (char c : msgError.toCharArray()) {
+                        primAttrs.code.addInst(OpCode.STC, (int)c);
+                        primAttrs.code.addInst(OpCode.WRT, 0);
+                    }
+                    primAttrs.code.addInst(OpCode.STC, 10);
+                    primAttrs.code.addInst(OpCode.WRT, 0);
+                    primAttrs.code.addInst(OpCode.LVP); // <- ABORTA LA MÁQUINA P INMEDIATAMENTE
+
+                    // 4. RAMA OK: Todo bien, podemos continuar
+                    primAttrs.code.addLabel(labelOk);
+                    primAttrs.code.addInst(OpCode.NOP);
+                }
+
+
                 // 2. Metemos la dirección en la pila
                 primAttrs.code.addInst(OpCode.SRF, f, (int)sym.dir);
 

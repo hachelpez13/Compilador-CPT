@@ -18,9 +18,13 @@ public class Attributes {
     // Tipo de la expresión, para comprobaciones semánticas
     public Symbol.Types type; 
     
+    // Chivato para el análisis estático de retornos
+    public boolean hasReturn;
+
     // Constructor por defecto
     public Attributes() {
         this.code = new CodeBlock();
         this.type = Symbol.Types.UNDEFINED; 
+        this.hasReturn = false;
     }
 }
