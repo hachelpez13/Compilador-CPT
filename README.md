@@ -48,3 +48,16 @@ Sitúate en el directorio raíz del repositorio y ejecuta Ant para limpiar versi
 
 ```bash
 ant clean && ant
+
+*Si la compilación es exitosa, se generará el árbol de clases en la carpeta `build/` y los ejecutables en `dist/`.*
+
+### 2. Ejecutar pruebas automatizadas
+Para lanzar el compilador sobre un directorio completo de archivos `.cpt` y ensamblarlos en la P-Máquina, utiliza el script de Python proporcionado:
+
+    python3 test.py test_actual
+
+### 3. Ejecución manual
+El compilador generará un archivo `.pcode`. Si hay errores semánticos, léxicos o sintácticos, la generación se detendrá y se mostrará un mensaje de error estandarizado indicando la línea y columna del fallo.
+
+---
+*Proyecto de la asignatura Procesadores de Lenguajes - Universidad de Zaragoza*
