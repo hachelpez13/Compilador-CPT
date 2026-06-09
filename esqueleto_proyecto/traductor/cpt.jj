@@ -1643,31 +1643,7 @@ Attributes factor() :
 //  ARITMÉTICA
 //
 
-// 1. División: Recursividad por la DERECHA
-Attributes factor_div() :
-{
-    Attributes attrs = new Attributes();
-    Attributes rightAttrs;
-    Token t;
-}
-{
-    attrs = factor()
-    (
-        t = < tDIV >
-        rightAttrs = factor_div() // Llamada recursiva a sí misma
-        {
-            if (attrs.type != Symbol.Types.INT || rightAttrs.type != Symbol.Types.INT) {
-                System.err.println("ERROR SEMÁNTICO: (" + t.beginLine + "," + t.beginColumn + "): La división solo admite operandos de tipo INT.");
-                hayErrores = true;
-            }
-            attrs.code.addBlock(rightAttrs.code);
-            attrs.code.addInst(OpCode.DIV);
-        }
-    )?
-    { return attrs; }
-}
-
-// 2. Multiplicación y Módulo: Asociatividad por la IZQUIERDA
+// 1. Multiplicación, División y Módulo: Asociatividad por la IZQUIERDA
 Attributes termino() :
 {
     Attributes attrs = new Attributes();
@@ -1675,24 +1651,30 @@ Attributes termino() :
     Token tOp;
 }
 {
-    attrs = factor_div()
+    attrs = factor()
     ( 
-        ( tOp = < tMUL > | tOp = < tMOD > )
-        rightAttrs = factor_div()
+        ( tOp = < tMUL > | tOp = < tDIV > | tOp = < tMOD > )
+        rightAttrs = factor()
         {
             if (attrs.type != Symbol.Types.INT || rightAttrs.type != Symbol.Types.INT) {
-                System.err.println("ERROR SEMÁNTICO: (" + tOp.beginLine + "," + tOp.beginColumn + "): Los operadores aritméticos (*, mod) solo admiten operandos de tipo INT.");
+                System.err.println("ERROR SEMÁNTICO: (" + tOp.beginLine + "," + tOp.beginColumn + "): Los operadores aritméticos (*, /, mod) solo admiten operandos de tipo INT.");
                 hayErrores = true;
             }
             attrs.code.addBlock(rightAttrs.code);
-            if (tOp.kind == cptConstants.tMUL) attrs.code.addInst(OpCode.TMS);
-            else attrs.code.addInst(OpCode.MOD);
+            
+            if (tOp.kind == cptConstants.tMUL) {
+                attrs.code.addInst(OpCode.TMS);
+            } else if (tOp.kind == cptConstants.tDIV) {
+                attrs.code.addInst(OpCode.DIV);
+            } else {
+                attrs.code.addInst(OpCode.MOD);
+            }
         }
     )*
     { return attrs; }
 }
 
-// 3. Suma y Resta
+// 2. Suma y Resta
 Attributes expresion_simple() :
 {
     Attributes attrs = new Attributes();
@@ -1717,7 +1699,7 @@ Attributes expresion_simple() :
     { return attrs; }
 }
 
-// 4. Operadores Relacionales
+// 3. Operadores Relacionales
 Attributes relacion() :
 {
     Attributes attrs = new Attributes();
@@ -1752,7 +1734,7 @@ Attributes relacion() :
     { return attrs; }
 }
 
-// 5. Operadores Lógicos
+// 4. Operadores Lógicos
 Attributes expresion() :
 {
     Attributes attrs = new Attributes();
